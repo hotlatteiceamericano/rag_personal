@@ -7,11 +7,19 @@ use tracing::info;
 
 use crate::source::{Document, Source};
 
-pub struct NotionSource {}
+pub struct NotionSource {
+    client: reqwest::Client,
+    token: String,
+    page_ids: Vec<String>,
+}
 
 impl NotionSource {
-    pub fn new() -> Self {
-        NotionSource {}
+    pub fn new(client: reqwest::Client, token: String, page_ids: Vec<String>) -> Self {
+        NotionSource {
+            client,
+            token,
+            page_ids,
+        }
     }
 }
 

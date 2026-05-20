@@ -2,7 +2,10 @@ use std::env;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use rag_personal::source::{Source, notion::NotionSource};
+use rag_personal::{
+    config::Config,
+    source::{Source, notion::NotionSource},
+};
 use serde_json::Value;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -27,10 +30,13 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    let client = reqwest::Client::new();
+    let config = Config::load()?;
+
     let cli = Cli::parse();
     match cli.command {
         Command::Ingest => {
-            let source = NotionSource::new();
+            let source = NotionSource::new(client, config.notion_token, config.root_page_ids);
             let docs = source.fetch().await?;
             info!(count = docs.len(), "fetched documents");
         }
