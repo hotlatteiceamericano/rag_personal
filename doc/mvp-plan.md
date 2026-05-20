@@ -31,9 +31,8 @@ with RRF**, LanceDB embedded, `rmcp` over stdio, single binary.
 - [ ] Add deps: `clap`, `fastembed`, `lancedb`, `arrow`, `rmcp`, `thiserror`,
   `tantivy`, `tantivy-jieba` (lexical/BM25 + CJK tokenizer), re-enable
   `dotenvy`. Pin versions.
-- [ ] Restructure into the module layout from design §5 (empty traits + stubs).
-- [ ] `clap` CLI dispatch with subcommands: `ingest`, `query`, `serve-mcp`,
-  `eval`.
+- [x] Restructure into the module layout from design §5 (empty traits + stubs).
+- [x] `clap` CLI dispatch with subcommands: `ingest`.
 - [ ] `config.rs`: load `.env` + defaults (root page ids, db path, model, top_k).
 - [ ] `source/notion.rs`: move the working call into a `Source` impl with
   **pagination** (`has_more` / `next_cursor`) and **recursion** into

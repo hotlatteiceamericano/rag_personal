@@ -3,6 +3,8 @@ I would like to implement the functionality manually. Before directly updating f
 
 I have minimum RAG pipeline knowledge and want to use this project as a learning opportunity. When in doubt, please ask me question so I can select between different feature option or different implementation details.
 
+Alwaus look up for the markdown documentations under the doc directory when in doubts or in conflicts.
+
 
 ** Coding Style **
 In terms of coding style, I would like to learn the Rust-idiomatic way of wrting Rust code. Let me know when you see something is not following the Rust's best practices, and always suggest me with the implementation which is Rust-idiomatic
