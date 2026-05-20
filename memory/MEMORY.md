@@ -1,1 +1,0 @@
-- [Project goal](project_rag_pipeline.md) — Rust RAG pipeline: Notion → fastembed (e5-small) → LanceDB → MCP server for personal AI agent
