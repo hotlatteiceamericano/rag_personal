@@ -11,7 +11,7 @@ pub struct SourceDoc {
     pub page_id: String,
     pub title: String,
     pub url: String,
-    pub block: Vec<TextBlock>,
+    pub blocks: Vec<TextBlock>,
 }
 
 #[derive(Debug)]

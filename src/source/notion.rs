@@ -1,4 +1,4 @@
-use std::{env, vec};
+use std::{collections::VecDeque, vec};
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -22,15 +22,11 @@ impl NotionSource {
             page_ids,
         }
     }
-}
 
-#[async_trait]
-impl Source for NotionSource {
-    async fn fetch(&self) -> anyhow::Result<Vec<SourceDoc>> {
-        let url = format!(
-            "https://api.notion.com/v1/blocks/{}/children?page_size=100",
-            "4f596d0962ca45b7bf5b3937364a8374" // todo: replace and iterate all page ids
-        );
+    pub async fn fetch_block_children(&self, block_id: &str) -> anyhow::Result<BlockListResponse> {
+        // todo: consider wrap the API call in another function
+        // for better error handling and exponential retry
+        let url = format!("https://api.notion.com/v1/blocks/{}/children", block_id);
 
         let resp: BlockListResponse = self
             .client
@@ -45,10 +41,46 @@ impl Source for NotionSource {
 
         info!("{:?}", resp);
 
+        Ok(resp)
+    }
+}
+
+#[async_trait]
+impl Source for NotionSource {
+    // todo:
+    // 1. put root page ids to a queue
+    // 2. call block children api for each root page ids
+    // 3. get the page info intself and convert it to a SourceDoc
+    // 4. then gets all the child page from this page, and push them into the queue
+    async fn fetch(&self) -> anyhow::Result<Vec<SourceDoc>> {
+        let mut queue = self.page_ids.clone();
+        let mut source_docs: Vec<SourceDoc> = Vec::new();
+        while let Some(page_id) = queue.pop() {
+            // warn here if not able to get block children
+            let resp = self.fetch_block_children(&page_id).await?;
+
+            // source_docs.extend(get_source_docs(&resp));
+            //
+            // let child_page_ids = get_child_page_ids(&resp);
+            //
+            // queue.extend(child_page_ids);
+        }
+
         anyhow::Ok(vec![])
     }
 }
 
+fn get_child_page_ids(resp: &BlockListResponse) -> Vec<String> {
+    todo!()
+}
+
+fn get_source_docs(resp: &BlockListResponse) -> Vec<SourceDoc> {
+    todo!()
+}
+
+// model for api.notion.com/v1/blocks/{block_id}/children API
+// contains list of Block in its `results` field
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct BlockListResponse {
     has_more: bool,
@@ -56,6 +88,8 @@ struct BlockListResponse {
     next_cursor: Option<String>,
 }
 
+// each "block" in a page can be a Paragraph, Heading, BulletItem and more
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct Block {
     id: String,
@@ -64,6 +98,7 @@ struct Block {
     body: BlockBody,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 enum BlockBody {
@@ -71,6 +106,7 @@ enum BlockBody {
     Unknown(serde_json::Value),
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum KnownBlock {
@@ -87,14 +123,19 @@ enum KnownBlock {
     Code { code: CodeBody },
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct RichTextHolder {
     rich_text: Vec<RichText>,
 }
+
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct RichText {
     plain_text: String,
 }
+
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct CodeBody {
     rich_text: Vec<RichText>,
