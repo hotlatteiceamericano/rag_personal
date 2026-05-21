@@ -122,13 +122,15 @@ struct SourceDoc {
     page_id: String,
     title: String,
     url: String,            // Notion page URL for citation
-    blocks: Vec<TextBlock>, // ordered, with heading level info
+    blocks: Vec<TextBlock>, // ordered
 }
-struct TextBlock { heading_path: Vec<String>, text: String }
+struct TextBlock { text: String, is_heading: bool }
 ```
 
-`heading_path` (the stack of enclosing headings) is preserved so the chunker
-can keep section context and we can cite "Page › Section".
+Heading blocks (`heading_1..3`) are flagged on `TextBlock` so the chunker can
+treat them as soft boundaries (see §4.2). The richer **heading_path**
+(stack of enclosing headings, for "Page › Section" citation) is deferred to
+Phase 2 — see §9.
 
 ### 4.2 Chunking
 
@@ -139,15 +141,18 @@ embedder's input limit and keep semantic coherence.
   **~256–384 tokens** per chunk with **~15% overlap** to preserve context
   across boundaries.
 - Strategy (MVP): **structure-aware greedy packing**
-  1. Group blocks under their `heading_path`.
+  1. Treat heading blocks (`heading_1..3`) as soft boundaries — prefer to emit
+     a chunk *before* crossing into the next section when the running chunk is
+     non-trivial.
   2. Greedily concatenate blocks until the next block would exceed the target
      size; emit a chunk; carry an overlap tail into the next chunk.
   3. Never split inside a code block; oversized single blocks are hard-split on
      character boundaries as a fallback.
 - Token counting: a cheap approximation for MVP (chars/≈3 for CJK-heavy text,
   chars/≈4 for Latin). Exact tokenization is a Phase-2 refinement.
-- Each chunk carries forward metadata: `page_id`, `title`, `url`,
-  `heading_path`, and a stable `chunk_id` (`{page_id}#{ordinal}`).
+- Each chunk carries forward metadata: `page_id`, `title`, `url`, and a stable
+  `chunk_id` (`{page_id}#{ordinal}`). Section-level citation context
+  (`heading_path`) is deferred to Phase 2 — see §9.
 
 The `Chunker` is a trait so we can later swap in token-exact or
 semantic/recursive splitters without touching the rest of the pipeline.
@@ -189,9 +194,11 @@ embedded in-process from a local directory.
   | `page_id`     | Utf8                | for delete/replace by page     |
   | `title`       | Utf8                | citation                       |
   | `url`         | Utf8                | citation                       |
-  | `heading_path`| Utf8                | joined with ` › `              |
   | `text`        | Utf8                | raw chunk text (no prefix)     |
   | `vector`      | FixedSizeList<f32,384> | L2-normalized embedding     |
+
+  (A `heading_path` column for section-level citation is deferred to Phase 2 —
+  see §9.)
 
 - **Distance:** cosine (or dot, since vectors are normalized).
 - **Indexing:** MVP uses brute-force / flat scan — fine for the expected
@@ -228,7 +235,7 @@ retrieve(query, k):
     d     = VectorStore.search(embed_query(query), N)   # dense ranked list
     l     = LexicalIndex.search(query, N)                # BM25 ranked list
     fused = rrf_merge(d, l, k_rrf = 60)
-    return fused[..k] -> { text, title, url, heading_path, score }
+    return fused[..k] -> { text, title, url, score }
 ```
 
 - **Lexical index choice:** `tantivy` (embedded, file-based, no server — fits
@@ -257,7 +264,7 @@ retrieve(query, k):
   name: search_notes
   description: Search the user's personal Notion notes for relevant passages.
   input:  { "query": string, "top_k": integer (default 5, max 20) }
-  output: list of { text, title, url, heading_path, score }
+  output: list of { text, title, url, score }
   ```
 
 - **OpenClaw registration** (run by the user once the binary builds):
@@ -458,6 +465,7 @@ Tick the boxes as phases land: `[ ]` = todo, `[x]` = done. *Italic* = touch
 points (the modules a phase changes).
 
 ### Phase 2
+- [ ] **`heading_path` citation context** — track the stack of enclosing headings on each `TextBlock`, propagate onto `Chunk`, persist as a `heading_path` Utf8 column in LanceDB (joined with ` › `), and surface it on `Hit` and the `search_notes` MCP output so answers can cite "Page › Section" — *source/notion.rs, chunk/, store/lancedb.rs, retrieve.rs, mcp/server.rs*
 - [ ] **Incremental sync** — use Notion `last_edited_time`, delete+reinsert only changed pages — *Source, pipeline*
 - [ ] **Token-exact chunking** + semantic/recursive splitter — *Chunker only*
 - [ ] **ANN index** (LanceDB IVF_PQ) when corpus is large — *store/lancedb.rs*

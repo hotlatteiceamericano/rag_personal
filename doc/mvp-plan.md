@@ -53,7 +53,9 @@ with RRF**, LanceDB embedded, `rmcp` over stdio, single binary.
 **Deliverable**
 - [ ] Block → plain text for: `paragraph`, `heading_1..3`, `bulleted_list_item`,
   `numbered_list_item`, `to_do`, `toggle`, `quote`, `callout`, `code`.
-  Build `SourceDoc { page_id, title, url, blocks[] }` with `heading_path`.
+  Build `SourceDoc { page_id, title, url, blocks[] }` where each `TextBlock`
+  carries an `is_heading` flag so the chunker can use heading boundaries as
+  soft splits. (Full `heading_path` citation context is deferred to Phase 2.)
 - [ ] `chunk/structure.rs`: structure-aware greedy packing, target ≤384 tokens,
   ~15% overlap, never split inside `code`, char-split oversized blocks.
 - [ ] Stable `chunk_id = {page_id}#{ordinal}`; metadata carried onto each chunk.
@@ -97,7 +99,7 @@ as P2 upgrade.
   segments into terms.
 - [ ] `retrieve.rs`: `HybridRetriever` = dense (`query:` prefix → vector search)
   **+** lexical (BM25) **+ RRF fusion** (`k ≈ 60`) →
-  `Hit { text, title, url, heading_path, score }`. Expose a
+  `Hit { text, title, url, score }`. Expose a
   `RetrievalMode { Dense, Lexical, Hybrid }` selector and a stable `chunk_id`
   tiebreak so the eval can ablate the three legs reproducibly (design §8.1).
 - [ ] `pipeline.rs`: wire full `ingest` (Notion → chunk → embed → **vector store +
@@ -205,6 +207,7 @@ If the week compresses, protect deliverables in this order:
 
 Pulled from design §9 — do **not** start these during the week:
 
+- [ ] `heading_path` citation context — propagate the enclosing-heading stack from source → chunk → store schema → `Hit` → `search_notes` output so answers can cite "Page › Section".
 - [ ] Incremental sync via Notion `last_edited_time`.
 - [ ] Token-exact / semantic chunking.
 - [ ] LanceDB ANN index (IVF_PQ).
