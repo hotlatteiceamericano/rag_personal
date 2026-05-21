@@ -28,6 +28,10 @@ pub enum BlockKind {
     ListItem,
     Quote,
     Code,
+    BulletedListItem,
+    NumberedListItem,
+    ToDo,
+    Toggle,
 }
 
 #[async_trait]
