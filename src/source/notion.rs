@@ -12,6 +12,7 @@ pub struct NotionSource {
     client: reqwest::Client,
     token: String,
     page_ids: Vec<String>,
+    base_url: String,
 }
 
 impl NotionSource {
@@ -20,13 +21,24 @@ impl NotionSource {
             client,
             token,
             page_ids,
+            base_url: "https://api.notion.com".to_string(),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_base_url(client: reqwest::Client, token: String, base_url: String) -> Self {
+        NotionSource {
+            client,
+            token,
+            page_ids: vec![],
+            base_url,
         }
     }
 
     pub async fn fetch_block_children(&self, block_id: &str) -> anyhow::Result<BlockListResponse> {
         // todo: consider wrap the API call in another function
         // for better error handling and exponential retry
-        let url = format!("https://api.notion.com/v1/blocks/{}/children", block_id);
+        let url = format!("{}/v1/blocks/{}/children", self.base_url, block_id);
 
         let resp: BlockListResponse = self
             .client
@@ -140,4 +152,58 @@ struct RichText {
 struct CodeBody {
     rich_text: Vec<RichText>,
     language: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{bearer_token, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn fetch_block_children_parses_response() {
+        let server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "has_more": false,
+            "next_cursor": null,
+            "results": [{
+                "id": "block-1",
+                "has_children": false,
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{ "plain_text": "hello world" }]
+                }
+            }]
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/page-123/children"))
+            .and(bearer_token("test-token"))
+            .and(header("Notion-Version", "2022-06-28"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let source = NotionSource::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let resp = source.fetch_block_children("page-123").await.unwrap();
+
+        assert!(!resp.has_more);
+        assert!(resp.next_cursor.is_none());
+        assert_eq!(resp.results.len(), 1);
+        assert_eq!(resp.results[0].id, "block-1");
+        assert!(!resp.results[0].has_children);
+        match &resp.results[0].body {
+            BlockBody::Known(KnownBlock::Paragraph { paragraph }) => {
+                assert_eq!(paragraph.rich_text[0].plain_text, "hello world");
+            }
+            other => panic!("expected Paragraph, got {:?}", other),
+        }
+    }
 }
