@@ -34,9 +34,9 @@ with RRF**, LanceDB embedded, `rmcp` over stdio, single binary.
 - [x] Restructure into the module layout from design §5 (empty traits + stubs).
 - [x] `clap` CLI dispatch with subcommands: `ingest`.
 - [ ] `config.rs`: load `.env` + defaults (root page ids, db path, model, top_k).
-- [ ] `source/notion.rs`: move the working call into a `Source` impl with
-  **pagination** (`has_more` / `next_cursor`) and **recursion** into
-  `has_children` blocks (visited-set + max depth).
+- [x] `source/notion.rs`: move the working call into a `Source` impl with
+  **pagination** (`has_more` / `next_cursor`). (Recursion into `has_children`
+  blocks deferred to Day 3.)
 
 **Acceptance criteria**
 - [ ] `cargo run -- ingest` reaches the Notion source and prints the *count* of
@@ -74,6 +74,12 @@ as P2 upgrade.
 ## Day 3 — Embedding + LanceDB store
 
 **Deliverable**
+- [ ] `source/notion.rs`: complete the deferred recursion from Day 1 — for
+  each block with `has_children == true` that is **not** a `child_page`,
+  recursively fetch its children and **inline-fold** them into the same
+  `SourceDoc` (preserves embedding context per design §4.1). Detect
+  `child_page` blocks and **enqueue their page ids** as new crawl roots so
+  each sub-page becomes its **own** `SourceDoc`. Visited-set + max-depth cap.
 - [ ] `embed/fastembed.rs`: `E5SmallEmbedder` with **`passage:` / `query:`
   prefixes** centralized here; L2-normalize output; batch embedding.
 - [ ] `store/lancedb.rs`: create/open table with the design §4.4 schema; `upsert`
@@ -81,6 +87,10 @@ as P2 upgrade.
 - [ ] `store/memory.rs`: in-memory impl for tests.
 
 **Acceptance criteria**
+- [ ] A page with nested bullets shows the nested text included in its
+  `SourceDoc.blocks` (not lost, not split into a separate doc).
+- [ ] A root page with `child_page` blocks produces N+1 SourceDocs (one for
+  the root, plus one per crawled sub-page).
 - [ ] First run logs the model download; subsequent runs use cache.
 - [ ] After `ingest`, `./data/lancedb` exists and a quick count query returns the
   expected number of chunk rows.

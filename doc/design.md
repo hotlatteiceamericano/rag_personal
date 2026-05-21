@@ -108,6 +108,27 @@ documents.
 - **Recursion:** any block with `has_children == true` is fetched again with
   its own block id as parent. Guard against cycles with a visited-set and a
   max-depth cap.
+- **Inline-fold vs. separate doc — the SourceDoc boundary.** Nested in-page
+  blocks (nested `bulleted_list_item` / `numbered_list_item`, `toggle`
+  bodies, `callout` / `quote` children) are **folded into the same
+  `SourceDoc`** as their parent. The only exception is `child_page` blocks,
+  which represent a user-curated sub-page and become **their own
+  `SourceDoc`** (the child page id is enqueued for crawl). Why: an isolated
+  nested bullet ("Time-box each session") loses the parent context ("Fix:")
+  that gives the embedding its discriminative power, and the chunker (§4.2)
+  cannot pack a parent with its children if they live in different
+  SourceDocs.
+- **How to tell them apart.** Both nested children and `child_page` blocks
+  arrive in the same `results` array of `/v1/blocks/{id}/children`. The
+  distinguishing field is the block's `type`:
+  - `type == "child_page"` → not text content; enqueue this block's `id` as a
+    new crawl root (Notion treats a page id as a block id), so it becomes its
+    own `SourceDoc`. Do **not** recurse into it inline.
+  - any other supported text type with `has_children == true` → recurse via
+    `/v1/blocks/{this_block_id}/children` and fold the returned children into
+    the current `SourceDoc`'s `blocks`.
+  - unknown `type` (e.g. `child_database`, `synced_block`) → log and skip;
+    do not recurse.
 - **Rate limits:** Notion allows ~3 requests/sec. Add a small concurrency cap
   and retry-with-backoff on HTTP 429 / 5xx.
 - **Text extraction:** map block types to plain text by concatenating
@@ -498,6 +519,7 @@ row above is a localized change.
 | Chinese has no whitespace → naive BM25 tokenizer kills lexical recall | CJK-aware tokenizer (`tantivy-jieba` / `jieba-rs`); EN+ZH retrieval smoke test |
 | Hybrid adds scope to a 1-week MVP | Day-4 fallback: ship vector-only for the Day-5 OpenClaw demo, finish hybrid before Day 6 so Recall@5 measures the hybrid system |
 | Hybrid can *regress* vs dense (fusion dilution) | The dense/lexical/hybrid Recall@5 ablation (§8.1) makes a regression visible; stable `chunk_id` tiebreak keeps the three runs reproducible |
+| Splitting nested in-page blocks into separate SourceDocs loses parent context and degrades embeddings | Inline-fold all in-page nested blocks into the parent's SourceDoc; only `child_page` blocks split (§4.1) |
 
 **Resolved decisions (2026-05-19):**
 
