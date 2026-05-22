@@ -1,13 +1,9 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    vec,
-};
+use std::{collections::HashMap, vec};
 
 use anyhow::Context;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tracing::{info, warn};
+use serde::Deserialize;
+use tracing::warn;
 
 use crate::source::{BlockKind, Source, SourceDoc, TextBlock};
 
@@ -38,13 +34,13 @@ impl NotionSource {
         }
     }
 
-    pub async fn fetch_block_children(
+    // todo: consider wrap the API call in another function
+    // for better error handling and exponential retry
+    async fn fetch_block_children(
         &self,
         block_id: &str,
         cursor: Option<&str>,
     ) -> anyhow::Result<BlockListResponse> {
-        // todo: consider wrap the API call in another function
-        // for better error handling and exponential retry
         let url = format!("{}/v1/blocks/{}/children", self.base_url, block_id);
 
         let mut req = self
@@ -94,7 +90,7 @@ impl NotionSource {
         })
     }
 
-    pub fn extract_text_blocks(resp: &BlockListResponse) -> Vec<TextBlock> {
+    fn extract_text_blocks(resp: &BlockListResponse) -> Vec<TextBlock> {
         resp.results
             .iter()
             .filter_map(Self::block_to_text_block)
@@ -193,14 +189,6 @@ impl Source for NotionSource {
 
         anyhow::Ok(docs)
     }
-}
-
-fn get_child_page_ids(resp: &BlockListResponse) -> Vec<String> {
-    todo!()
-}
-
-fn get_source_docs(resp: &BlockListResponse) -> Vec<SourceDoc> {
-    todo!()
 }
 
 // model for api.notion.com/v1/pages/{page_id} API
