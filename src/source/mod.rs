@@ -1,7 +1,4 @@
-use std::result;
-
 use async_trait::async_trait;
-use serde::Deserialize;
 
 pub mod notion;
 
@@ -32,6 +29,12 @@ pub enum BlockKind {
     NumberedListItem,
     ToDo,
     Toggle,
+}
+
+impl BlockKind {
+    pub fn is_heading(&self) -> bool {
+        matches!(self, BlockKind::Heading(_))
+    }
 }
 
 #[async_trait]
