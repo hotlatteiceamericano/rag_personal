@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
-pub mod notion;
+mod dto;
+pub mod notion_source;
 
 // internal type to abstract from different sources
 #[derive(Debug)]

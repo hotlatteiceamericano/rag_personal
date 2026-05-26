@@ -1,10 +1,12 @@
-use std::{collections::HashMap, vec};
+use std::vec;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use serde::Deserialize;
 use tracing::warn;
 
+use crate::source::dto::notion::{
+    Block, BlockBody, BlockListResponse, KnownBlock, PageProperty, PageResponse, join_rich,
+};
 use crate::source::{BlockKind, Source, SourceDoc, TextBlock};
 
 pub struct NotionSource {
@@ -193,103 +195,10 @@ impl Source for NotionSource {
     }
 }
 
-// model for api.notion.com/v1/pages/{page_id} API
 #[derive(Debug)]
 pub struct PageMeta {
     pub title: String,
     pub url: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct PageResponse {
-    url: String,
-    properties: HashMap<String, PageProperty>,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum PageProperty {
-    Title {
-        title: Vec<RichText>,
-    },
-    #[serde(other)]
-    Other,
-}
-
-fn join_rich(rt: &[RichText]) -> String {
-    rt.iter().map(|r| r.plain_text.as_str()).collect()
-}
-
-// model for api.notion.com/v1/blocks/{block_id}/children API
-// contains list of Block in its `results` field
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct BlockListResponse {
-    has_more: bool,
-    results: Vec<Block>,
-    next_cursor: Option<String>,
-}
-
-// each "block" in a page can be a Paragraph, Heading, BulletItem and more
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct Block {
-    id: String,
-    has_children: bool,
-    #[serde(flatten)]
-    body: BlockBody,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum BlockBody {
-    Known(KnownBlock),
-    Unknown(serde_json::Value),
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum KnownBlock {
-    Paragraph { paragraph: RichTextHolder },
-    Heading1 { heading_1: RichTextHolder },
-    Heading2 { heading_2: RichTextHolder },
-    Heading3 { heading_3: RichTextHolder },
-    BulletedListItem { bulleted_list_item: RichTextHolder },
-    NumberedListItem { numbered_list_item: RichTextHolder },
-    ToDo { to_do: RichTextHolder },
-    Toggle { toggle: RichTextHolder },
-    Quote { quote: RichTextHolder },
-    Code { code: CodeBody },
-    ChildPage { child_page: ChildPageBody },
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct RichTextHolder {
-    rich_text: Vec<RichText>,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct RichText {
-    plain_text: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct CodeBody {
-    rich_text: Vec<RichText>,
-    language: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct ChildPageBody {
-    title: String,
 }
 
 #[cfg(test)]

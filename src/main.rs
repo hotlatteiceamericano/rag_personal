@@ -1,12 +1,8 @@
-use std::env;
-
-use anyhow::Context;
 use clap::{Parser, Subcommand};
 use rag_personal::{
     config::Config,
-    source::{Source, notion::NotionSource},
+    source::{Source, notion_source::NotionSource},
 };
-use serde_json::Value;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
