@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Ingest => {
             let source = NotionSource::new(client, config.notion_token, config.root_page_ids);
             let docs = source.fetch().await?;
-            info!("fetched docs: {:?}", docs);
+            info!("fetched docs: {:#?}", docs);
         }
     }
 
