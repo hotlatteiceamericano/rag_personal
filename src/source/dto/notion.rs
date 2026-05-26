@@ -49,8 +49,11 @@ pub enum BlockBody {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum KnownBlock {
     Paragraph { paragraph: RichTextHolder },
+    #[serde(rename = "heading_1")]
     Heading1 { heading_1: RichTextHolder },
+    #[serde(rename = "heading_2")]
     Heading2 { heading_2: RichTextHolder },
+    #[serde(rename = "heading_3")]
     Heading3 { heading_3: RichTextHolder },
     BulletedListItem { bulleted_list_item: RichTextHolder },
     NumberedListItem { numbered_list_item: RichTextHolder },

@@ -27,11 +27,16 @@ impl NotionSource {
     }
 
     #[cfg(test)]
-    fn with_base_url(client: reqwest::Client, token: String, base_url: String) -> Self {
+    fn with_base_url(
+        client: reqwest::Client,
+        token: String,
+        base_url: String,
+        page_ids: Vec<String>,
+    ) -> Self {
         NotionSource {
             client,
             token,
-            page_ids: vec![],
+            page_ids,
             base_url,
         }
     }
@@ -204,8 +209,32 @@ pub struct PageMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{bearer_token, header, method, path};
+    use wiremock::matchers::{
+        bearer_token, header, method, path, query_param, query_param_is_missing,
+    };
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn test_source(server_uri: String, page_ids: Vec<String>) -> NotionSource {
+        NotionSource::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server_uri,
+            page_ids,
+        )
+    }
+
+    async fn mock_page_meta(server: &MockServer, page_id: &str, title: &str, url: &str) {
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/pages/{page_id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": url,
+                "properties": {
+                    "title": { "type": "title", "title": [{ "plain_text": title }] }
+                }
+            })))
+            .mount(server)
+            .await;
+    }
 
     #[tokio::test]
     async fn fetch_block_children_parses_response() {
@@ -237,6 +266,7 @@ mod tests {
             reqwest::Client::new(),
             "test-token".to_string(),
             server.uri(),
+            vec![],
         );
 
         let resp = source.fetch_block_children("page-123", None).await.unwrap();
@@ -252,5 +282,168 @@ mod tests {
             }
             other => panic!("expected Paragraph, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_returns_source_doc_for_single_page() {
+        let server = MockServer::start().await;
+
+        mock_page_meta(&server, "page-A", "Page A", "https://notion.so/page-A").await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/page-A/children"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": false,
+                "next_cursor": null,
+                "results": [
+                    {
+                        "id": "b1",
+                        "has_children": false,
+                        "type": "heading_1",
+                        "heading_1": { "rich_text": [{ "plain_text": "Title" }] }
+                    },
+                    {
+                        "id": "b2",
+                        "has_children": false,
+                        "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "plain_text": "hello" }] }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let source = test_source(server.uri(), vec!["page-A".to_string()]);
+        let docs = source.fetch().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        let doc = &docs[0];
+        assert_eq!(doc.page_id, "page-A");
+        assert_eq!(doc.title, "Page A");
+        assert_eq!(doc.url, "https://notion.so/page-A");
+        assert_eq!(doc.blocks.len(), 2);
+        assert!(doc.blocks[0].kind.is_heading());
+        assert_eq!(doc.blocks[0].text, "Title");
+        assert_eq!(doc.blocks[1].text, "hello");
+        assert!(matches!(doc.blocks[1].kind, BlockKind::Paragraph));
+    }
+
+    #[tokio::test]
+    async fn fetch_recursively_follows_child_pages() {
+        let server = MockServer::start().await;
+
+        // Parent page: one paragraph + one child_page block pointing at "child-B"
+        mock_page_meta(&server, "page-A", "Page A", "https://notion.so/page-A").await;
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/page-A/children"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": false,
+                "next_cursor": null,
+                "results": [
+                    {
+                        "id": "b1",
+                        "has_children": false,
+                        "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "plain_text": "parent body" }] }
+                    },
+                    {
+                        "id": "child-B",
+                        "has_children": true,
+                        "type": "child_page",
+                        "child_page": { "title": "Child B" }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        // Child page
+        mock_page_meta(&server, "child-B", "Child B", "https://notion.so/child-B").await;
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/child-B/children"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": false,
+                "next_cursor": null,
+                "results": [
+                    {
+                        "id": "b2",
+                        "has_children": false,
+                        "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "plain_text": "child body" }] }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let source = test_source(server.uri(), vec!["page-A".to_string()]);
+        let docs = source.fetch().await.unwrap();
+
+        assert_eq!(docs.len(), 2);
+
+        let parent = docs.iter().find(|d| d.page_id == "page-A").unwrap();
+        let child = docs.iter().find(|d| d.page_id == "child-B").unwrap();
+
+        // child_page block must NOT appear in the parent's blocks
+        assert_eq!(parent.blocks.len(), 1);
+        assert_eq!(parent.blocks[0].text, "parent body");
+
+        assert_eq!(child.title, "Child B");
+        assert_eq!(child.blocks.len(), 1);
+        assert_eq!(child.blocks[0].text, "child body");
+    }
+
+    #[tokio::test]
+    async fn fetch_handles_pagination() {
+        let server = MockServer::start().await;
+
+        mock_page_meta(&server, "page-A", "Page A", "https://notion.so/page-A").await;
+
+        // First call: no start_cursor, has_more=true, next_cursor="cursor-2"
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/page-A/children"))
+            .and(query_param_is_missing("start_cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": true,
+                "next_cursor": "cursor-2",
+                "results": [
+                    {
+                        "id": "b1",
+                        "has_children": false,
+                        "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "plain_text": "page 1" }] }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        // Second call: start_cursor=cursor-2, has_more=false
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/page-A/children"))
+            .and(query_param("start_cursor", "cursor-2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": false,
+                "next_cursor": null,
+                "results": [
+                    {
+                        "id": "b2",
+                        "has_children": false,
+                        "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "plain_text": "page 2" }] }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let source = test_source(server.uri(), vec!["page-A".to_string()]);
+        let docs = source.fetch().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        let blocks = &docs[0].blocks;
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].text, "page 1");
+        assert_eq!(blocks[1].text, "page 2");
     }
 }
