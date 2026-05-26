@@ -66,6 +66,24 @@ impl NotionSource {
         Ok(resp)
     }
 
+    // Fully paginates one parent's children into a flat Vec, preserving order.
+    async fn fetch_all_children(&self, block_id: &str) -> anyhow::Result<Vec<Block>> {
+        let mut out: Vec<Block> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let resp = self
+                .fetch_block_children(block_id, cursor.as_deref())
+                .await
+                .with_context(|| format!("fetch block children for {block_id}"))?;
+            out.extend(resp.results);
+            if !resp.has_more {
+                break;
+            }
+            cursor = resp.next_cursor;
+        }
+        Ok(out)
+    }
+
     pub async fn fetch_page_meta(&self, page_id: &str) -> anyhow::Result<PageMeta> {
         let url = format!("{}/v1/pages/{}", self.base_url, page_id);
 
@@ -95,13 +113,6 @@ impl NotionSource {
             title,
             url: resp.url,
         })
-    }
-
-    fn extract_text_blocks(resp: &BlockListResponse) -> Vec<TextBlock> {
-        resp.results
-            .iter()
-            .filter_map(Self::block_to_text_block)
-            .collect()
     }
 
     fn block_to_text_block(b: &Block) -> Option<TextBlock> {
@@ -149,16 +160,6 @@ impl NotionSource {
             kind,
         })
     }
-
-    fn extract_child_page_ids(resp: &BlockListResponse) -> Vec<String> {
-        resp.results
-            .iter()
-            .filter_map(|block| match &block.body {
-                BlockBody::Known(KnownBlock::ChildPage { .. }) => Some(block.id.clone()),
-                _ => None,
-            })
-            .collect()
-    }
 }
 
 #[async_trait]
@@ -166,37 +167,46 @@ impl Source for NotionSource {
     async fn fetch(&self) -> anyhow::Result<Vec<SourceDoc>> {
         let mut queue = self.page_ids.clone();
         let mut docs: Vec<SourceDoc> = Vec::new();
+
         while let Some(page_id) = queue.pop() {
             let meta = self.fetch_page_meta(&page_id).await?;
 
-            let mut blocks: Vec<TextBlock> = Vec::new();
-            let mut cursor: Option<String> = None;
+            let mut text_blocks: Vec<TextBlock> = Vec::new();
+            let mut notion_blocks: Vec<Block> = Vec::new();
 
-            loop {
-                let resp = self
-                    .fetch_block_children(&page_id, cursor.as_deref())
-                    .await
-                    .with_context(|| format!("fetch block children for {page_id}"))?;
+            // Seed with the page's top-level children, reversed so the first
+            // child ends up on top of the stack (pre-order DFS).
+            for b in self.fetch_all_children(&page_id).await?.into_iter().rev() {
+                notion_blocks.push(b);
+            }
 
-                blocks.extend(NotionSource::extract_text_blocks(&resp));
-                queue.extend(NotionSource::extract_child_page_ids(&resp));
-
-                if !resp.has_more {
-                    break;
+            while let Some(block) = notion_blocks.pop() {
+                // child_page becomes its own SourceDoc; don't fold into parent.
+                if matches!(&block.body, BlockBody::Known(KnownBlock::ChildPage { .. })) {
+                    queue.push(block.id);
+                    continue;
                 }
 
-                cursor = resp.next_cursor;
+                if let Some(tb) = NotionSource::block_to_text_block(&block) {
+                    text_blocks.push(tb);
+                }
+
+                if block.has_children {
+                    for c in self.fetch_all_children(&block.id).await?.into_iter().rev() {
+                        notion_blocks.push(c);
+                    }
+                }
             }
 
             docs.push(SourceDoc {
                 page_id,
                 title: meta.title,
                 url: meta.url,
-                blocks,
+                blocks: text_blocks,
             });
         }
 
-        anyhow::Ok(docs)
+        Ok(docs)
     }
 }
 
@@ -445,5 +455,73 @@ mod tests {
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0].text, "page 1");
         assert_eq!(blocks[1].text, "page 2");
+    }
+
+    #[tokio::test]
+    async fn fetch_folds_nested_bullets_into_parent_doc() {
+        let server = MockServer::start().await;
+
+        mock_page_meta(&server, "page-A", "Page A", "https://notion.so/page-A").await;
+
+        // Top-level: a bulleted_list_item with has_children=true, followed
+        // by a paragraph sibling.
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/page-A/children"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": false,
+                "next_cursor": null,
+                "results": [
+                    {
+                        "id": "bullet-parent",
+                        "has_children": true,
+                        "type": "bulleted_list_item",
+                        "bulleted_list_item": {
+                            "rich_text": [{ "plain_text": "parent bullet" }]
+                        }
+                    },
+                    {
+                        "id": "p-after",
+                        "has_children": false,
+                        "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "plain_text": "after" }] }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        // Nested children of bullet-parent.
+        Mock::given(method("GET"))
+            .and(path("/v1/blocks/bullet-parent/children"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "has_more": false,
+                "next_cursor": null,
+                "results": [
+                    {
+                        "id": "bullet-child",
+                        "has_children": false,
+                        "type": "bulleted_list_item",
+                        "bulleted_list_item": {
+                            "rich_text": [{ "plain_text": "nested bullet" }]
+                        }
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let source = test_source(server.uri(), vec!["page-A".to_string()]);
+        let docs = source.fetch().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        let blocks = &docs[0].blocks;
+        assert_eq!(blocks.len(), 3);
+        // Pre-order DFS: parent → nested child → next sibling.
+        assert_eq!(blocks[0].text, "parent bullet");
+        assert!(matches!(blocks[0].kind, BlockKind::BulletedListItem));
+        assert_eq!(blocks[1].text, "nested bullet");
+        assert!(matches!(blocks[1].kind, BlockKind::BulletedListItem));
+        assert_eq!(blocks[2].text, "after");
+        assert!(matches!(blocks[2].kind, BlockKind::Paragraph));
     }
 }
