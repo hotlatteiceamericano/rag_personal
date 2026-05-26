@@ -51,7 +51,7 @@ with RRF**, LanceDB embedded, `rmcp` over stdio, single binary.
 ## Day 2 — Text extraction + chunking
 
 **Deliverable**
-- [ ] Block → plain text for: `paragraph`, `heading_1..3`, `bulleted_list_item`,
+- [x] Block → plain text for: `paragraph`, `heading_1..3`, `bulleted_list_item`,
   `numbered_list_item`, `to_do`, `toggle`, `quote`, `callout`, `code`.
   Build `SourceDoc { page_id, title, url, blocks[] }` where each `TextBlock`
   carries an `is_heading` flag so the chunker can use heading boundaries as
@@ -76,10 +76,13 @@ as P2 upgrade.
 **Deliverable**
 - [ ] `source/notion.rs`: complete the deferred recursion from Day 1 — for
   each block with `has_children == true` that is **not** a `child_page`,
-  recursively fetch its children and **inline-fold** them into the same
-  `SourceDoc` (preserves embedding context per design §4.1). Detect
-  `child_page` blocks and **enqueue their page ids** as new crawl roots so
-  each sub-page becomes its **own** `SourceDoc`. Visited-set + max-depth cap.
+  fetch its children via an **explicit DFS stack** (`Vec<String>` worklist,
+  *not* async self-recursion — see design §4.1) and **inline-fold** them
+  into the same `SourceDoc` (preserves embedding context per design §4.1).
+  Detect `child_page` blocks and **enqueue their page ids** as new crawl
+  roots so each sub-page becomes its **own** `SourceDoc`. Visited-set +
+  max-depth cap. Inline-folded blocks keep `heading_path: vec![]` for MVP;
+  the enclosing-heading stack is deferred to Phase 2 (design §9).
 - [ ] `embed/fastembed.rs`: `E5SmallEmbedder` with **`passage:` / `query:`
   prefixes** centralized here; L2-normalize output; batch embedding.
 - [ ] `store/lancedb.rs`: create/open table with the design §4.4 schema; `upsert`

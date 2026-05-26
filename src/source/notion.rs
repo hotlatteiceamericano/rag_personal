@@ -124,6 +124,7 @@ impl NotionSource {
                 KnownBlock::Toggle { toggle } => (join_rich(&toggle.rich_text), BlockKind::Toggle),
                 KnownBlock::Quote { quote } => (join_rich(&quote.rich_text), BlockKind::Quote),
                 KnownBlock::Code { code } => (join_rich(&code.rich_text), BlockKind::Code),
+                KnownBlock::ChildPage { .. } => return None,
             },
             BlockBody::Unknown(v) => {
                 warn!(id = &b.id, "skipping unknow block type, value: {v}");
@@ -141,15 +142,20 @@ impl NotionSource {
             kind,
         })
     }
+
+    fn extract_child_page_ids(resp: &BlockListResponse) -> Vec<String> {
+        resp.results
+            .iter()
+            .filter_map(|block| match &block.body {
+                BlockBody::Known(KnownBlock::ChildPage { .. }) => Some(block.id.clone()),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
 impl Source for NotionSource {
-    // todo:
-    // 1. put root page ids to a queue
-    // 2. call block children api for each root page ids
-    // 3. get the page info intself and convert it to a SourceDoc
-    // 4. then gets all the child page from this page, and push them into the queue
     async fn fetch(&self) -> anyhow::Result<Vec<SourceDoc>> {
         let mut queue = self.page_ids.clone();
         let mut docs: Vec<SourceDoc> = Vec::new();
@@ -166,6 +172,7 @@ impl Source for NotionSource {
                     .with_context(|| format!("fetch block children for {page_id}"))?;
 
                 blocks.extend(NotionSource::extract_text_blocks(&resp));
+                queue.extend(NotionSource::extract_child_page_ids(&resp));
 
                 if !resp.has_more {
                     break;
@@ -180,11 +187,6 @@ impl Source for NotionSource {
                 url: meta.url,
                 blocks,
             });
-
-            // todo: recursively handle children
-            // let child_page_ids = get_child_page_ids(&resp);
-            //
-            // queue.extend(child_page_ids);
         }
 
         anyhow::Ok(docs)
@@ -262,6 +264,7 @@ enum KnownBlock {
     Toggle { toggle: RichTextHolder },
     Quote { quote: RichTextHolder },
     Code { code: CodeBody },
+    ChildPage { child_page: ChildPageBody },
 }
 
 #[allow(dead_code)]
@@ -281,6 +284,12 @@ struct RichText {
 struct CodeBody {
     rich_text: Vec<RichText>,
     language: String,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, Debug)]
+struct ChildPageBody {
+    title: String,
 }
 
 #[cfg(test)]

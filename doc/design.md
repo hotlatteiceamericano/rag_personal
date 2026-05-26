@@ -108,6 +108,11 @@ documents.
 - **Recursion:** any block with `has_children == true` is fetched again with
   its own block id as parent. Guard against cycles with a visited-set and a
   max-depth cap.
+- **Recursion implementation.** Inline-fold uses an **explicit DFS stack**
+  of block ids to expand (`Vec<String>` worklist), not async self-recursion.
+  Rust `async fn` cannot self-recurse without `Box::pin`-ing the returned
+  future (its type is opaque and non-`Sized`); a worklist sidesteps that and
+  keeps the control flow linear.
 - **Inline-fold vs. separate doc — the SourceDoc boundary.** Nested in-page
   blocks (nested `bulleted_list_item` / `numbered_list_item`, `toggle`
   bodies, `callout` / `quote` children) are **folded into the same
