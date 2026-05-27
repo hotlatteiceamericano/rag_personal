@@ -1,5 +1,7 @@
 use crate::source::SourceDoc;
 
+pub mod structure;
+
 #[derive(Debug, Clone)]
 pub struct Chunk {
     pub chunk_id: String,
