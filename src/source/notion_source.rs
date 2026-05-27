@@ -2,7 +2,7 @@ use std::vec;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::source::dto::notion::{
     Block, BlockBody, BlockListResponse, KnownBlock, PageProperty, PageResponse, join_rich,
@@ -216,10 +216,12 @@ impl Source for NotionSource {
 
             docs.push(SourceDoc {
                 page_id,
-                title: meta.title,
+                title: meta.title.clone(),
                 url: meta.url,
                 blocks: text_blocks,
             });
+
+            info!(handled = &docs.len(), title = &meta.title, "fetched page");
         }
 
         Ok(docs)
