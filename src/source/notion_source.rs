@@ -67,7 +67,7 @@ impl NotionSource {
     }
 
     // Fully paginates one parent's children into a flat Vec, preserving order.
-    async fn fetch_all_children(&self, block_id: &str) -> anyhow::Result<Vec<Block>> {
+    async fn fetch_block_children_pagination(&self, block_id: &str) -> anyhow::Result<Vec<Block>> {
         let mut out: Vec<Block> = Vec::new();
         let mut cursor: Option<String> = None;
         loop {
@@ -164,6 +164,12 @@ impl NotionSource {
 
 #[async_trait]
 impl Source for NotionSource {
+    // refactor and abstract each functionalties:
+    // 1. iterate initial root page ids in a queue
+    // 2. fetch and iterate notion blocks:
+    //   1. fetch child page id and push them to the queue
+    //   2. convert notion blocks to internal blocks
+    //   3. for other children, fetch their descedent blocks for further iteration
     async fn fetch(&self) -> anyhow::Result<Vec<SourceDoc>> {
         let mut queue = self.page_ids.clone();
         let mut docs: Vec<SourceDoc> = Vec::new();
@@ -176,7 +182,12 @@ impl Source for NotionSource {
 
             // Seed with the page's top-level children, reversed so the first
             // child ends up on top of the stack (pre-order DFS).
-            for b in self.fetch_all_children(&page_id).await?.into_iter().rev() {
+            for b in self
+                .fetch_block_children_pagination(&page_id)
+                .await?
+                .into_iter()
+                .rev()
+            {
                 notion_blocks.push(b);
             }
 
@@ -192,7 +203,12 @@ impl Source for NotionSource {
                 }
 
                 if block.has_children {
-                    for c in self.fetch_all_children(&block.id).await?.into_iter().rev() {
+                    for c in self
+                        .fetch_block_children_pagination(&block.id)
+                        .await?
+                        .into_iter()
+                        .rev()
+                    {
                         notion_blocks.push(c);
                     }
                 }
