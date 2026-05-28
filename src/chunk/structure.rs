@@ -12,11 +12,14 @@ impl StructureChunker {
 }
 
 impl Chunker for StructureChunker {
+    // fill the buffer with doc.block.text
+    // when full, flush the buffer and convert it to chunks
     fn chunk(&self, doc: &SourceDoc) -> Vec<Chunk> {
         let mut chunks: Vec<Chunk> = Vec::new();
-        let mut current = String::new();
+        let mut buffer = String::new();
         let mut ordinal: usize = 0;
 
+        // using closure to capture external doc, any better way?
         let make_chunk = |text: String, ord: usize| Chunk {
             chunk_id: format!("{}#{}", doc.page_id, ord),
             page_id: doc.page_id.clone(),
@@ -26,18 +29,18 @@ impl Chunker for StructureChunker {
         };
 
         for block in &doc.blocks {
-            // Heading is a soft boundary: flush before crossing into the next section.
-            if block.kind.is_heading() && !current.is_empty() {
-                chunks.push(make_chunk(std::mem::take(&mut current), ordinal));
+            // flush immediately when seeing headings
+            if block.kind.is_heading() && !buffer.is_empty() {
+                chunks.push(make_chunk(std::mem::take(&mut buffer), ordinal));
                 ordinal += 1;
             }
 
             let block_tokens = approx_tokens(&block.text);
 
-            // Oversized non-code block: hard-split. Code is emitted whole regardless of size.
+            // first handle oversize chunk
             if block_tokens > self.target_tokens && !matches!(block.kind, BlockKind::Code) {
-                if !current.is_empty() {
-                    chunks.push(make_chunk(std::mem::take(&mut current), ordinal));
+                if !buffer.is_empty() {
+                    chunks.push(make_chunk(std::mem::take(&mut buffer), ordinal));
                     ordinal += 1;
                 }
                 for piece in hard_split(&block.text, self.target_tokens) {
@@ -47,21 +50,22 @@ impl Chunker for StructureChunker {
                 continue;
             }
 
-            if !current.is_empty()
-                && approx_tokens(&current) + block_tokens > self.target_tokens
-            {
-                chunks.push(make_chunk(std::mem::take(&mut current), ordinal));
+            // second handle current buffer + current block exceed size
+            if !buffer.is_empty() && approx_tokens(&buffer) + block_tokens > self.target_tokens {
+                chunks.push(make_chunk(std::mem::take(&mut buffer), ordinal));
                 ordinal += 1;
             }
 
-            if !current.is_empty() {
-                current.push('\n');
+            if !buffer.is_empty() {
+                buffer.push('\n');
             }
-            current.push_str(&block.text);
+
+            // fill the buffer
+            buffer.push_str(&block.text);
         }
 
-        if !current.is_empty() {
-            chunks.push(make_chunk(current, ordinal));
+        if !buffer.is_empty() {
+            chunks.push(make_chunk(buffer, ordinal));
         }
 
         chunks
