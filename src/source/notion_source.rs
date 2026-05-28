@@ -234,6 +234,10 @@ pub struct PageMeta {
     pub url: String,
 }
 
+// todo: refactor test to follow meta's coding style
+// one liner to prepare for test input and output
+// call the testing function
+// assert
 #[cfg(test)]
 mod tests {
     use super::*;
