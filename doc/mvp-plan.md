@@ -28,21 +28,21 @@ with RRF**, LanceDB embedded, `rmcp` over stdio, single binary.
 ## Day 1 — Project skeleton + Notion client
 
 **Deliverable**
-- [ ] Add deps: `clap`, `fastembed`, `lancedb`, `arrow`, `rmcp`, `thiserror`,
+- [x] Add deps: `clap`, `fastembed`, `lancedb`, `arrow`, `rmcp`, `thiserror`,
   `tantivy`, `tantivy-jieba` (lexical/BM25 + CJK tokenizer), re-enable
   `dotenvy`. Pin versions.
 - [x] Restructure into the module layout from design §5 (empty traits + stubs).
 - [x] `clap` CLI dispatch with subcommands: `ingest`.
-- [ ] `config.rs`: load `.env` + defaults (root page ids, db path, model, top_k).
+- [x] `config.rs`: load `.env` + defaults (root page ids, db path, model, top_k).
 - [x] `source/notion.rs`: move the working call into a `Source` impl with
   **pagination** (`has_more` / `next_cursor`). (Recursion into `has_children`
   blocks deferred to Day 3.)
 
 **Acceptance criteria**
-- [ ] `cargo run -- ingest` reaches the Notion source and prints the *count* of
+- [x] `cargo run -- ingest` reaches the Notion source and prints the *count* of
   blocks fetched recursively from the root page (more than the flat
   `page_size=100` you get today).
-- [ ] `cargo run -- --help` shows all four subcommands.
+- [x] `cargo run -- --help` shows all four subcommands.
 
 **Risk/note:** Notion ~3 req/s — add backoff on 429/5xx now, not later.
 
@@ -56,14 +56,14 @@ with RRF**, LanceDB embedded, `rmcp` over stdio, single binary.
   Build `SourceDoc { page_id, title, url, blocks[] }` where each `TextBlock`
   carries an `is_heading` flag so the chunker can use heading boundaries as
   soft splits. (Full `heading_path` citation context is deferred to Phase 2.)
-- [ ] `chunk/structure.rs`: structure-aware greedy packing, target ≤384 tokens,
+- [x] `chunk/structure.rs`: structure-aware greedy packing, target ≤384 tokens,
   ~15% overlap, never split inside `code`, char-split oversized blocks.
-- [ ] Stable `chunk_id = {page_id}#{ordinal}`; metadata carried onto each chunk.
+- [x] Stable `chunk_id = {page_id}#{ordinal}`; metadata carried onto each chunk.
 
 **Acceptance criteria**
-- [ ] `cargo run -- ingest` prints N documents → M chunks with size stats
+- [x] `cargo run -- ingest` prints N documents → M chunks with size stats
   (min/median/max chars) and no chunk exceeds the cap.
-- [ ] Spot-check: a known note's text appears intact across its chunks; Chinese
+- [x] Spot-check: a known note's text appears intact across its chunks; Chinese
   text is not mangled (UTF-8 boundaries respected).
 
 **Risk/note:** char-based token approximation only — acceptable for MVP, flag

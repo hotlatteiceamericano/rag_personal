@@ -160,68 +160,64 @@ impl NotionSource {
             kind,
         })
     }
+
+    async fn fetch_page(
+        &self,
+        page_id: &str,
+        page_queue: &mut Vec<String>,
+    ) -> anyhow::Result<SourceDoc> {
+        let meta = self.fetch_page_meta(page_id).await?;
+        let blocks = self.collect_text_blocks(page_id, page_queue).await?;
+        Ok(SourceDoc {
+            page_id: page_id.to_string(),
+            title: meta.title,
+            url: meta.url,
+            blocks,
+        })
+    }
+
+    // Pre-order DFS over one page's block tree. ChildPage blocks are pushed
+    // onto `page_queue` so they become their own SourceDoc instead of folding
+    // into the parent.
+    async fn collect_text_blocks(
+        &self,
+        page_id: &str,
+        page_queue: &mut Vec<String>,
+    ) -> anyhow::Result<Vec<TextBlock>> {
+        let mut text_blocks: Vec<TextBlock> = Vec::new();
+        let mut stack: Vec<Block> = self.fetch_block_children_pagination(page_id).await?;
+        stack.reverse(); // first child on top of stack
+
+        while let Some(block) = stack.pop() {
+            if matches!(&block.body, BlockBody::Known(KnownBlock::ChildPage { .. })) {
+                page_queue.push(block.id);
+                continue;
+            }
+
+            if let Some(tb) = Self::block_to_text_block(&block) {
+                text_blocks.push(tb);
+            }
+
+            if block.has_children {
+                let children = self.fetch_block_children_pagination(&block.id).await?;
+                stack.extend(children.into_iter().rev());
+            }
+        }
+
+        Ok(text_blocks)
+    }
 }
 
 #[async_trait]
 impl Source for NotionSource {
-    // refactor and abstract each functionalties:
-    // 1. iterate initial root page ids in a queue
-    // 2. fetch and iterate notion blocks:
-    //   1. fetch child page id and push them to the queue
-    //   2. convert notion blocks to internal blocks
-    //   3. for other children, fetch their descedent blocks for further iteration
     async fn fetch(&self) -> anyhow::Result<Vec<SourceDoc>> {
-        let mut queue = self.page_ids.clone();
+        let mut page_queue = self.page_ids.clone();
         let mut docs: Vec<SourceDoc> = Vec::new();
 
-        while let Some(page_id) = queue.pop() {
-            let meta = self.fetch_page_meta(&page_id).await?;
-
-            let mut text_blocks: Vec<TextBlock> = Vec::new();
-            let mut notion_blocks: Vec<Block> = Vec::new();
-
-            // Seed with the page's top-level children, reversed so the first
-            // child ends up on top of the stack (pre-order DFS).
-            for b in self
-                .fetch_block_children_pagination(&page_id)
-                .await?
-                .into_iter()
-                .rev()
-            {
-                notion_blocks.push(b);
-            }
-
-            while let Some(block) = notion_blocks.pop() {
-                // child_page becomes its own SourceDoc; don't fold into parent.
-                if matches!(&block.body, BlockBody::Known(KnownBlock::ChildPage { .. })) {
-                    queue.push(block.id);
-                    continue;
-                }
-
-                if let Some(tb) = NotionSource::block_to_text_block(&block) {
-                    text_blocks.push(tb);
-                }
-
-                if block.has_children {
-                    for c in self
-                        .fetch_block_children_pagination(&block.id)
-                        .await?
-                        .into_iter()
-                        .rev()
-                    {
-                        notion_blocks.push(c);
-                    }
-                }
-            }
-
-            docs.push(SourceDoc {
-                page_id,
-                title: meta.title.clone(),
-                url: meta.url,
-                blocks: text_blocks,
-            });
-
-            info!(handled = &docs.len(), title = &meta.title, "fetched page");
+        while let Some(page_id) = page_queue.pop() {
+            let doc = self.fetch_page(&page_id, &mut page_queue).await?;
+            info!(handled = docs.len() + 1, title = %doc.title, "fetched page");
+            docs.push(doc);
         }
 
         Ok(docs)
