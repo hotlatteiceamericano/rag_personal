@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use rag_personal::{
+    chunk::{Chunk, Chunker, structure::StructureChunker},
     config::Config,
     source::{Source, notion_source::NotionSource},
 };
@@ -35,8 +36,30 @@ async fn main() -> anyhow::Result<()> {
             let source = NotionSource::new(client, config.notion_token, config.root_page_ids);
             let docs = source.fetch().await?;
             info!("fetched docs: {:#?}", docs);
+
+            let chunker = StructureChunker::new(config.chunk_target_tokens);
+            let chunks: Vec<Chunk> = docs.iter().flat_map(|d| chunker.chunk(d)).collect();
+
+            let (min, median, max) = chunk_char_stats(&chunks);
+            info!(
+                "chunked {} docs → {} chunks (chars min/median/max: {}/{}/{})",
+                docs.len(),
+                chunks.len(),
+                min,
+                median,
+                max,
+            );
         }
     }
 
     Ok(())
+}
+
+fn chunk_char_stats(chunks: &[Chunk]) -> (usize, usize, usize) {
+    if chunks.is_empty() {
+        return (0, 0, 0);
+    }
+    let mut lens: Vec<usize> = chunks.iter().map(|c| c.text.chars().count()).collect();
+    lens.sort_unstable();
+    (lens[0], lens[lens.len() / 2], lens[lens.len() - 1])
 }

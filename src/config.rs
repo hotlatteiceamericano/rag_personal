@@ -5,6 +5,7 @@ use anyhow::Context;
 pub struct Config {
     pub notion_token: String,
     pub root_page_ids: Vec<String>,
+    pub chunk_target_tokens: usize,
 }
 
 impl Config {
@@ -18,6 +19,7 @@ impl Config {
         Ok(Self {
             notion_token,
             root_page_ids,
+            chunk_target_tokens: 384,
         })
     }
 }
