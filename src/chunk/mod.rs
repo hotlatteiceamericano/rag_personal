@@ -1,5 +1,6 @@
 use crate::source::SourceDoc;
 
+mod chunk_builder;
 pub mod structure;
 
 #[derive(Debug, Clone)]

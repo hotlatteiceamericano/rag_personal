@@ -74,7 +74,7 @@ as P2 upgrade.
 ## Day 3 — Embedding + LanceDB store
 
 **Deliverable**
-- [ ] `source/notion.rs`: complete the deferred recursion from Day 1 — for
+- [x] `source/notion.rs`: complete the deferred recursion from Day 1 — for
   each block with `has_children == true` that is **not** a `child_page`,
   fetch its children via an **explicit DFS stack** (`Vec<String>` worklist,
   *not* async self-recursion — see design §4.1) and **inline-fold** them
