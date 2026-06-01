@@ -2,3 +2,4 @@
 .env
 /corpus
 /.fastembed_cache
+/data
