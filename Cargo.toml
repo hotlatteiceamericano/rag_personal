@@ -15,6 +15,9 @@ async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = {version="0.3", features=["env-filter"]}
 fastembed = "5.15"
+lancedb = "0.30"
+arrow = "58"
+futures = "0.3"
 
 [dev-dependencies]
 wiremock = "0.6"

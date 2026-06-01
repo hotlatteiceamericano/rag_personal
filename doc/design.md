@@ -230,8 +230,15 @@ embedded in-process from a local directory.
 - **Indexing:** MVP uses brute-force / flat scan — fine for the expected
   thousands of chunks. An ANN index (IVF_PQ) is a Phase-2 toggle once the
   corpus grows.
-- **Upsert semantics:** MVP does *delete-by-`page_id` then insert* to make
-  re-ingest idempotent without true delta sync.
+- **Upsert semantics:** MVP uses LanceDB's `merge_insert` keyed by
+  `chunk_id` to atomically insert-or-update each chunk, plus
+  `when_not_matched_by_source_delete` scoped to the `page_id`s in the
+  current batch to evict orphan chunks (rows for a re-ingested page that no
+  longer appear in the new chunk list — e.g. when an edited page produces
+  fewer chunks than before). This is one atomic op per ingest batch and is
+  strictly stronger than the earlier "delete-by-`page_id` then insert"
+  sketch (no brief inconsistent window, no orphan rows). True delta sync
+  via Notion `last_edited_time` is still deferred to Phase 2.
 
 `VectorStore` trait: `upsert(rows)`, `search(query_vec, k) -> Vec<Hit>`,
 `delete_page(page_id)`. LanceDB is one impl; an in-memory impl is handy for
