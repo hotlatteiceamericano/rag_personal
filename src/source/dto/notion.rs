@@ -45,23 +45,46 @@ pub enum BlockBody {
     Unknown(serde_json::Value),
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum KnownBlock {
-    Paragraph { paragraph: RichTextHolder },
+    Paragraph {
+        paragraph: RichTextHolder,
+    },
     #[serde(rename = "heading_1")]
-    Heading1 { heading_1: RichTextHolder },
+    Heading1 {
+        heading_1: RichTextHolder,
+    },
     #[serde(rename = "heading_2")]
-    Heading2 { heading_2: RichTextHolder },
+    Heading2 {
+        heading_2: RichTextHolder,
+    },
     #[serde(rename = "heading_3")]
-    Heading3 { heading_3: RichTextHolder },
-    BulletedListItem { bulleted_list_item: RichTextHolder },
-    NumberedListItem { numbered_list_item: RichTextHolder },
-    ToDo { to_do: RichTextHolder },
-    Toggle { toggle: RichTextHolder },
-    Quote { quote: RichTextHolder },
-    Code { code: CodeBody },
-    ChildPage { child_page: ChildPageBody },
+    Heading3 {
+        heading_3: RichTextHolder,
+    },
+    BulletedListItem {
+        bulleted_list_item: RichTextHolder,
+    },
+    NumberedListItem {
+        numbered_list_item: RichTextHolder,
+    },
+    ToDo {
+        to_do: RichTextHolder,
+    },
+    Toggle {
+        toggle: RichTextHolder,
+    },
+    Quote {
+        quote: RichTextHolder,
+    },
+    Code {
+        code: CodeBody,
+    },
+    ChildPage {
+        child_page: ChildPageBody,
+    },
 }
 
 #[derive(Deserialize, Debug)]
