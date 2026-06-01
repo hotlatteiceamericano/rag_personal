@@ -19,6 +19,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Ingest,
+    Inspect {
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[arg(long)]
+        stats: bool,
+        #[arg(long)]
+        page_id: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main]
@@ -41,6 +51,50 @@ async fn main() -> anyhow::Result<()> {
             let store = LanceStore::connect(&config.db_path).await?;
 
             pipeline::ingest(&source, &chunker, &embedder, &store).await?;
+        }
+        Command::Inspect {
+            limit,
+            stats,
+            page_id,
+            json,
+        } => {
+            let store = LanceStore::connect(&config.db_path).await?;
+
+            if stats {
+                let rows = store.row_count().await?;
+                let pages = store.page_count().await?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "rows": rows, "pages": pages })
+                    );
+                } else {
+                    println!("Total rows:   {rows}");
+                    println!("Unique pages: {pages}");
+                }
+                return Ok(());
+            }
+
+            let rows = store.scan(limit, page_id.as_deref()).await?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                for (i, r) in rows.iter().enumerate() {
+                    let preview: String = r.text.chars().take(200).collect();
+                    let ellipsis = if r.text.chars().count() > 200 { "…" } else { "" };
+                    println!(
+                        "[{}] chunk_id={}  page={}  url={}",
+                        i + 1,
+                        r.chunk_id,
+                        r.title,
+                        r.url,
+                    );
+                    println!("    {preview}{ellipsis}");
+                    println!();
+                }
+                println!("Showing {} row(s).", rows.len());
+            }
         }
     }
 

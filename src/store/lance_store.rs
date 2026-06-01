@@ -14,7 +14,7 @@ use lancedb::DistanceType;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::table::Table;
 
-use super::{EmbeddedChunk, Hit, VectorStore};
+use super::{EmbeddedChunk, Hit, StoredRow, VectorStore};
 
 const TABLE_NAME: &str = "notes";
 const DIMENSION: i32 = 384;
@@ -45,6 +45,75 @@ impl LanceStore {
         };
 
         Ok(Self { table, schema })
+    }
+
+    pub async fn scan(
+        &self,
+        limit: usize,
+        page_id: Option<&str>,
+    ) -> anyhow::Result<Vec<StoredRow>> {
+        let mut q = self.table.query().limit(limit);
+        if let Some(pid) = page_id {
+            let escaped = pid.replace('\'', "''");
+            q = q.only_if(format!("page_id = '{}'", escaped));
+        }
+
+        let stream = q.execute().await.context("scanning LanceDB table")?;
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .context("collecting scan stream")?;
+
+        let mut rows = Vec::new();
+        for batch in batches {
+            let chunk_ids = downcast_string(&batch, "chunk_id")?;
+            let page_ids = downcast_string(&batch, "page_id")?;
+            let titles = downcast_string(&batch, "title")?;
+            let urls = downcast_string(&batch, "url")?;
+            let texts = downcast_string(&batch, "text")?;
+
+            for i in 0..batch.num_rows() {
+                rows.push(StoredRow {
+                    chunk_id: chunk_ids.value(i).to_string(),
+                    page_id: page_ids.value(i).to_string(),
+                    title: titles.value(i).to_string(),
+                    url: urls.value(i).to_string(),
+                    text: texts.value(i).to_string(),
+                });
+            }
+        }
+        Ok(rows)
+    }
+
+    pub async fn row_count(&self) -> anyhow::Result<usize> {
+        self.table
+            .count_rows(None)
+            .await
+            .context("counting LanceDB rows")
+    }
+
+    pub async fn page_count(&self) -> anyhow::Result<usize> {
+        let stream = self
+            .table
+            .query()
+            .select(lancedb::query::Select::Columns(vec!["page_id".into()]))
+            .execute()
+            .await
+            .context("scanning page_id column")?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .context("collecting page_id stream")?;
+
+        let mut pages: BTreeSet<String> = BTreeSet::new();
+        for batch in batches {
+            let page_ids = downcast_string(&batch, "page_id")?;
+            for i in 0..batch.num_rows() {
+                pages.insert(page_ids.value(i).to_string());
+            }
+        }
+        Ok(pages.len())
     }
 
     fn build_batch(&self, rows: &[EmbeddedChunk]) -> anyhow::Result<RecordBatch> {

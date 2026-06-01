@@ -80,3 +80,63 @@ Use the standard `RUST_LOG` env var:
 RUST_LOG=debug cargo run -- ingest    # noisier
 RUST_LOG=warn cargo run -- ingest     # quieter
 ```
+
+## Inspect
+
+Read-only look at what's currently in the LanceDB store. Useful for verifying
+that an ingest run actually landed, sanity-checking chunk boundaries, or
+piping rows to another tool.
+
+### Show table stats
+
+```
+cargo run -- inspect --stats
+```
+
+Prints the total row count and the number of unique pages:
+
+```
+Total rows:   87
+Unique pages: 12
+```
+
+### Browse rows
+
+By default, scans up to 10 rows and prints a short text preview per chunk:
+
+```
+cargo run -- inspect              # first 10 rows
+cargo run -- inspect --limit 25   # first 25 rows
+```
+
+Expected output:
+
+```
+[1] chunk_id=ab12cd34-0  page=Project notes  url=https://www.notion.so/...
+    Some short preview of the chunk text, truncated at 200 characters…
+
+[2] chunk_id=ab12cd34-1  page=Project notes  url=https://www.notion.so/...
+    Next chunk's preview…
+
+Showing 10 row(s).
+```
+
+### Filter by page
+
+Restrict the scan to a single Notion page (the `page_id` column matches the
+Notion page UUID):
+
+```
+cargo run -- inspect --page-id 1234abcd-5678-...
+```
+
+### JSON output
+
+Pipe-friendly output for `jq` or further processing:
+
+```
+cargo run -- inspect --limit 3 --json | jq
+cargo run -- inspect --stats --json
+```
+
+`--json` works with both row scans and `--stats`.

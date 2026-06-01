@@ -1,5 +1,16 @@
 pub mod lance_store;
 
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StoredRow {
+    pub chunk_id: String,
+    pub page_id: String,
+    pub title: String,
+    pub url: String,
+    pub text: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct EmbeddedChunk {
     pub chunk_id: String,
