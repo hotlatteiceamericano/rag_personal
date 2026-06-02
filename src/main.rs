@@ -4,6 +4,7 @@ use rag_personal::{
     config::Config,
     embed::fastembed_embedder::E5SmallEmbedder,
     pipeline,
+    retrieve::{DenseRetriever, RetrievalMode, Retriever},
     source::notion_source::NotionSource,
     store::lance_store::LanceStore,
 };
@@ -19,6 +20,13 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Ingest,
+    Query {
+        query: String,
+        #[arg(long, default_value_t = 5)]
+        top_k: usize,
+        #[arg(long, value_enum, default_value_t = RetrievalMode::Dense)]
+        mode: RetrievalMode,
+    },
     Inspect {
         #[arg(long, default_value_t = 10)]
         limit: usize,
@@ -51,6 +59,41 @@ async fn main() -> anyhow::Result<()> {
             let store = LanceStore::connect(&config.db_path).await?;
 
             pipeline::ingest(&source, &chunker, &embedder, &store).await?;
+        }
+        Command::Query {
+            query,
+            top_k,
+            mode,
+        } => {
+            let embedder = E5SmallEmbedder::new()?;
+            let store = LanceStore::connect(&config.db_path).await?;
+
+            let retriever: Box<dyn Retriever + '_> = match mode {
+                RetrievalMode::Dense => Box::new(DenseRetriever::new(&embedder, &store)),
+                RetrievalMode::Lexical | RetrievalMode::Hybrid => {
+                    anyhow::bail!("{mode:?} mode not implemented yet")
+                }
+            };
+
+            let hits = retriever.retrieve(&query, top_k).await?;
+            if hits.is_empty() {
+                println!("No hits.");
+                return Ok(());
+            }
+            for (i, h) in hits.iter().enumerate() {
+                println!(
+                    "[{}] score={:.4}  {}  ({})",
+                    i + 1,
+                    h.score,
+                    h.title,
+                    h.url,
+                );
+                let preview: String = h.text.chars().take(240).collect();
+                let ellipsis = if h.text.chars().count() > 240 { "…" } else { "" };
+                println!("    {preview}{ellipsis}");
+                println!();
+            }
+            println!("Showing {} hit(s).", hits.len());
         }
         Command::Inspect {
             limit,
