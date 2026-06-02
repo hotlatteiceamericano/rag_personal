@@ -1,9 +1,7 @@
 use std::{env, path::PathBuf};
 
-use anyhow::Context;
-
 pub struct Config {
-    pub notion_token: String,
+    pub notion_token: Option<String>,
     pub root_page_ids: Vec<String>,
     pub chunk_target_tokens: usize,
     pub db_path: PathBuf,
@@ -11,7 +9,7 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> anyhow::Result<Self> {
-        let notion_token = env::var("NOTION_TOKEN").context("NOTION_TOKEN not set")?;
+        let notion_token = env::var("NOTION_TOKEN").ok();
         let root_page_ids = vec![
             "3108458c27988048b5b8eef713e581cc".to_string(),
             "8419cd72c7c54e698bb293c770030357".to_string(),

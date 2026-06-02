@@ -47,13 +47,16 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = Config::load()?;
     let cli = Cli::parse();
+    let config = Config::load()?;
 
     match cli.command {
         Command::Ingest => {
+            let notion_token = config
+                .notion_token
+                .ok_or_else(|| anyhow::anyhow!("NOTION_TOKEN not set"))?;
             let client = reqwest::Client::new();
-            let source = NotionSource::new(client, config.notion_token, config.root_page_ids);
+            let source = NotionSource::new(client, notion_token, config.root_page_ids);
             let chunker = StructureChunker::new(config.chunk_target_tokens);
             let embedder = E5SmallEmbedder::new()?;
             let store = LanceStore::connect(&config.db_path).await?;
