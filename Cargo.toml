@@ -18,6 +18,8 @@ fastembed = "5.15"
 lancedb = "0.30"
 arrow = "58"
 futures = "0.3"
+tantivy = "0.26"
+tantivy-jieba = "0.20"
 
 [dev-dependencies]
 wiremock = "0.6"
