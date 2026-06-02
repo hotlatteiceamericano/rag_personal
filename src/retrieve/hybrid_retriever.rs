@@ -1,61 +1,13 @@
 use std::collections::HashMap;
 
-use clap::ValueEnum;
-
 use crate::embed::Embedder;
 use crate::lexical::LexicalIndex;
 use crate::store::{Hit, VectorStore};
 
+use super::{DenseRetriever, LexicalRetriever, Retriever};
+
 const DEFAULT_N_PER_LEG: usize = 50;
 const DEFAULT_RRF_K: f32 = 60.0;
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum RetrievalMode {
-    Dense,
-    Lexical,
-    Hybrid,
-}
-
-#[async_trait::async_trait]
-pub trait Retriever: Send + Sync {
-    async fn retrieve(&self, query: &str, top_k: usize) -> anyhow::Result<Vec<Hit>>;
-}
-
-pub struct DenseRetriever<'a, E: Embedder, S: VectorStore> {
-    embedder: &'a E,
-    store: &'a S,
-}
-
-impl<'a, E: Embedder, S: VectorStore> DenseRetriever<'a, E, S> {
-    pub fn new(embedder: &'a E, store: &'a S) -> Self {
-        Self { embedder, store }
-    }
-}
-
-#[async_trait::async_trait]
-impl<E: Embedder + Sync, S: VectorStore> Retriever for DenseRetriever<'_, E, S> {
-    async fn retrieve(&self, query: &str, top_k: usize) -> anyhow::Result<Vec<Hit>> {
-        let qv = self.embedder.embed_query(query)?;
-        self.store.search(&qv, top_k).await
-    }
-}
-
-pub struct LexicalRetriever<'a, L: LexicalIndex> {
-    index: &'a L,
-}
-
-impl<'a, L: LexicalIndex> LexicalRetriever<'a, L> {
-    pub fn new(index: &'a L) -> Self {
-        Self { index }
-    }
-}
-
-#[async_trait::async_trait]
-impl<L: LexicalIndex> Retriever for LexicalRetriever<'_, L> {
-    async fn retrieve(&self, query: &str, top_k: usize) -> anyhow::Result<Vec<Hit>> {
-        self.index.search(query, top_k)
-    }
-}
 
 pub struct HybridRetriever<'a, E: Embedder, S: VectorStore, L: LexicalIndex> {
     dense: DenseRetriever<'a, E, S>,
@@ -150,7 +102,12 @@ mod tests {
         let fused = rrf_fuse(vec![dense, lexical], 60.0, 2);
         let a = fused.iter().find(|h| h.chunk_id == "a").unwrap();
         let expected = 1.0 / 61.0 + 1.0 / 62.0;
-        assert!((a.score - expected).abs() < 1e-6, "got {}, want {}", a.score, expected);
+        assert!(
+            (a.score - expected).abs() < 1e-6,
+            "got {}, want {}",
+            a.score,
+            expected
+        );
     }
 
     #[test]
@@ -161,7 +118,6 @@ mod tests {
 
         let fused = rrf_fuse(vec![l1, l2], 60.0, 2);
         assert_eq!(fused[0].chunk_id, "y", "y wins rank 1 in both");
-        // x and the next-highest by score: x is rank 2 in both, ties don't exist here.
         // For a true tie test:
         let m1 = vec![hit("zeta"), hit("alpha")];
         let m2 = vec![hit("alpha"), hit("zeta")];
