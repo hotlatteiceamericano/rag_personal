@@ -32,7 +32,11 @@ pub async fn ingest(
 
     let texts: Vec<String> = chunks.iter().map(|c| c.text.clone()).collect();
     let vectors = embedder.embed_passages(&texts)?;
-    info!("embedded {} chunks ({}-dim)", vectors.len(), embedder.dimension());
+    info!(
+        "embedded {} chunks ({}-dim)",
+        vectors.len(),
+        embedder.dimension()
+    );
 
     let rows: Vec<EmbeddedChunk> = chunks
         .into_iter()
