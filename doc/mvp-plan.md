@@ -83,21 +83,21 @@ as P2 upgrade.
   roots so each sub-page becomes its **own** `SourceDoc`. Visited-set +
   max-depth cap. Inline-folded blocks keep `heading_path: vec![]` for MVP;
   the enclosing-heading stack is deferred to Phase 2 (design §9).
-- [ ] `embed/fastembed.rs`: `E5SmallEmbedder` with **`passage:` / `query:`
+- [x] `embed/fastembed.rs`: `E5SmallEmbedder` with **`passage:` / `query:`
   prefixes** centralized here; L2-normalize output; batch embedding.
-- [ ] `store/lancedb.rs`: create/open table with the design §4.4 schema; `upsert`
+- [x] `store/lancedb.rs`: create/open table with the design §4.4 schema; `upsert`
   (delete-by-`page_id` then insert); `search(vec, k)` cosine.
 - [ ] `store/memory.rs`: in-memory impl for tests.
 
 **Acceptance criteria**
-- [ ] A page with nested bullets shows the nested text included in its
+- [x] A page with nested bullets shows the nested text included in its
   `SourceDoc.blocks` (not lost, not split into a separate doc).
-- [ ] A root page with `child_page` blocks produces N+1 SourceDocs (one for
+- [x] A root page with `child_page` blocks produces N+1 SourceDocs (one for
   the root, plus one per crawled sub-page).
 - [ ] First run logs the model download; subsequent runs use cache.
-- [ ] After `ingest`, `./data/lancedb` exists and a quick count query returns the
+- [x] After `ingest`, `./data/lancedb` exists and a quick count query returns the
   expected number of chunk rows.
-- [ ] Unit test asserts the embedder applies the correct prefix and returns
+- [x] Unit test asserts the embedder applies the correct prefix and returns
   384-dim, L2-normalized vectors.
 
 **Risk/note:** pin `lancedb`/`arrow` versions; isolate all Arrow code here.
@@ -115,7 +115,7 @@ as P2 upgrade.
   `Hit { text, title, url, score }`. Expose a
   `RetrievalMode { Dense, Lexical, Hybrid }` selector and a stable `chunk_id`
   tiebreak so the eval can ablate the three legs reproducibly (design §8.1).
-- [ ] `pipeline.rs`: wire full `ingest` (Notion → chunk → embed → **vector store +
+- [x] `pipeline.rs`: wire full `ingest` (Notion → chunk → embed → **vector store +
   lexical index**).
 - [ ] `query "<text>"` subcommand prints fused ranked hits with scores +
   citations.
