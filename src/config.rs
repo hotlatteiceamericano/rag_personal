@@ -5,6 +5,7 @@ pub struct Config {
     pub root_page_ids: Vec<String>,
     pub chunk_target_tokens: usize,
     pub db_path: PathBuf,
+    pub lexical_path: PathBuf,
 }
 
 impl Config {
@@ -17,12 +18,16 @@ impl Config {
         let db_path = env::var("RAG_DB_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("./data/lancedb"));
+        let lexical_path = env::var("RAG_LEXICAL_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("./data/tantivy"));
 
         Ok(Self {
             notion_token,
             root_page_ids,
             chunk_target_tokens: 384,
             db_path,
+            lexical_path,
         })
     }
 }

@@ -2,6 +2,7 @@ use tracing::info;
 
 use crate::chunk::{Chunk, Chunker};
 use crate::embed::Embedder;
+use crate::lexical::LexicalIndex;
 use crate::source::Source;
 use crate::store::{EmbeddedChunk, VectorStore};
 
@@ -10,6 +11,7 @@ pub async fn ingest(
     chunker: &impl Chunker,
     embedder: &impl Embedder,
     store: &impl VectorStore,
+    lexical: &impl LexicalIndex,
 ) -> anyhow::Result<()> {
     let docs = source.fetch().await?;
     info!("fetched {} docs", docs.len());
@@ -29,6 +31,9 @@ pub async fn ingest(
         info!("nothing to embed, skipping upsert");
         return Ok(());
     }
+
+    lexical.upsert(&chunks)?;
+    info!("indexed {} chunks into lexical store", chunks.len());
 
     let texts: Vec<String> = chunks.iter().map(|c| c.text.clone()).collect();
     let vectors = embedder.embed_passages(&texts)?;

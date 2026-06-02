@@ -3,6 +3,7 @@ use rag_personal::{
     chunk::structure::StructureChunker,
     config::Config,
     embed::fastembed_embedder::E5SmallEmbedder,
+    lexical::tantivy_index::TantivyIndex,
     pipeline,
     retrieve::{DenseRetriever, RetrievalMode, Retriever},
     source::notion_source::NotionSource,
@@ -60,8 +61,9 @@ async fn main() -> anyhow::Result<()> {
             let chunker = StructureChunker::new(config.chunk_target_tokens);
             let embedder = E5SmallEmbedder::new()?;
             let store = LanceStore::connect(&config.db_path).await?;
+            let lexical = TantivyIndex::open_or_create(&config.lexical_path)?;
 
-            pipeline::ingest(&source, &chunker, &embedder, &store).await?;
+            pipeline::ingest(&source, &chunker, &embedder, &store, &lexical).await?;
         }
         Command::Query {
             query,
