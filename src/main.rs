@@ -5,7 +5,7 @@ use rag_personal::{
     embed::fastembed_embedder::E5SmallEmbedder,
     lexical::tantivy_index::TantivyIndex,
     pipeline,
-    retrieve::{DenseRetriever, LexicalRetriever, RetrievalMode, Retriever},
+    retrieve::{DenseRetriever, HybridRetriever, LexicalRetriever, RetrievalMode, Retriever},
     source::notion_source::NotionSource,
     store::lance_store::LanceStore,
 };
@@ -25,7 +25,7 @@ enum Command {
         query: String,
         #[arg(long, default_value_t = 5)]
         top_k: usize,
-        #[arg(long, value_enum, default_value_t = RetrievalMode::Dense)]
+        #[arg(long, value_enum, default_value_t = RetrievalMode::Hybrid)]
         mode: RetrievalMode,
     },
     Inspect {
@@ -65,11 +65,7 @@ async fn main() -> anyhow::Result<()> {
 
             pipeline::ingest(&source, &chunker, &embedder, &store, &lexical).await?;
         }
-        Command::Query {
-            query,
-            top_k,
-            mode,
-        } => {
+        Command::Query { query, top_k, mode } => {
             let embedder = E5SmallEmbedder::new()?;
             let store = LanceStore::connect(&config.db_path).await?;
             let lexical = TantivyIndex::open_or_create(&config.lexical_path)?;
@@ -77,24 +73,26 @@ async fn main() -> anyhow::Result<()> {
             let retriever: Box<dyn Retriever + '_> = match mode {
                 RetrievalMode::Dense => Box::new(DenseRetriever::new(&embedder, &store)),
                 RetrievalMode::Lexical => Box::new(LexicalRetriever::new(&lexical)),
-                RetrievalMode::Hybrid => anyhow::bail!("Hybrid mode not implemented yet"),
+                RetrievalMode::Hybrid => {
+                    Box::new(HybridRetriever::new(&embedder, &store, &lexical))
+                }
             };
 
             let hits = retriever.retrieve(&query, top_k).await?;
+
             if hits.is_empty() {
                 println!("No hits.");
                 return Ok(());
             }
+
             for (i, h) in hits.iter().enumerate() {
-                println!(
-                    "[{}] score={:.4}  {}  ({})",
-                    i + 1,
-                    h.score,
-                    h.title,
-                    h.url,
-                );
+                println!("[{}] score={:.4}  {}  ({})", i + 1, h.score, h.title, h.url,);
                 let preview: String = h.text.chars().take(240).collect();
-                let ellipsis = if h.text.chars().count() > 240 { "…" } else { "" };
+                let ellipsis = if h.text.chars().count() > 240 {
+                    "…"
+                } else {
+                    ""
+                };
                 println!("    {preview}{ellipsis}");
                 println!();
             }
@@ -112,10 +110,7 @@ async fn main() -> anyhow::Result<()> {
                 let rows = store.row_count().await?;
                 let pages = store.page_count().await?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "rows": rows, "pages": pages })
-                    );
+                    println!("{}", serde_json::json!({ "rows": rows, "pages": pages }));
                 } else {
                     println!("Total rows:   {rows}");
                     println!("Unique pages: {pages}");
@@ -130,7 +125,11 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 for (i, r) in rows.iter().enumerate() {
                     let preview: String = r.text.chars().take(200).collect();
-                    let ellipsis = if r.text.chars().count() > 200 { "…" } else { "" };
+                    let ellipsis = if r.text.chars().count() > 200 {
+                        "…"
+                    } else {
+                        ""
+                    };
                     println!(
                         "[{}] chunk_id={}  page={}  url={}",
                         i + 1,
