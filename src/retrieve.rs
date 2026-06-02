@@ -1,6 +1,7 @@
 use clap::ValueEnum;
 
 use crate::embed::Embedder;
+use crate::lexical::LexicalIndex;
 use crate::store::{Hit, VectorStore};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -31,5 +32,22 @@ impl<E: Embedder + Sync, S: VectorStore> Retriever for DenseRetriever<'_, E, S> 
     async fn retrieve(&self, query: &str, top_k: usize) -> anyhow::Result<Vec<Hit>> {
         let qv = self.embedder.embed_query(query)?;
         self.store.search(&qv, top_k).await
+    }
+}
+
+pub struct LexicalRetriever<'a, L: LexicalIndex> {
+    index: &'a L,
+}
+
+impl<'a, L: LexicalIndex> LexicalRetriever<'a, L> {
+    pub fn new(index: &'a L) -> Self {
+        Self { index }
+    }
+}
+
+#[async_trait::async_trait]
+impl<L: LexicalIndex> Retriever for LexicalRetriever<'_, L> {
+    async fn retrieve(&self, query: &str, top_k: usize) -> anyhow::Result<Vec<Hit>> {
+        self.index.search(query, top_k)
     }
 }

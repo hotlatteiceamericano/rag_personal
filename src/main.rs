@@ -5,7 +5,7 @@ use rag_personal::{
     embed::fastembed_embedder::E5SmallEmbedder,
     lexical::tantivy_index::TantivyIndex,
     pipeline,
-    retrieve::{DenseRetriever, RetrievalMode, Retriever},
+    retrieve::{DenseRetriever, LexicalRetriever, RetrievalMode, Retriever},
     source::notion_source::NotionSource,
     store::lance_store::LanceStore,
 };
@@ -72,12 +72,12 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let embedder = E5SmallEmbedder::new()?;
             let store = LanceStore::connect(&config.db_path).await?;
+            let lexical = TantivyIndex::open_or_create(&config.lexical_path)?;
 
             let retriever: Box<dyn Retriever + '_> = match mode {
                 RetrievalMode::Dense => Box::new(DenseRetriever::new(&embedder, &store)),
-                RetrievalMode::Lexical | RetrievalMode::Hybrid => {
-                    anyhow::bail!("{mode:?} mode not implemented yet")
-                }
+                RetrievalMode::Lexical => Box::new(LexicalRetriever::new(&lexical)),
+                RetrievalMode::Hybrid => anyhow::bail!("Hybrid mode not implemented yet"),
             };
 
             let hits = retriever.retrieve(&query, top_k).await?;
