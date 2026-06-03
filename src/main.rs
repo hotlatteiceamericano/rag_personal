@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clap::{Parser, Subcommand};
 use rag_personal::{
     chunk::structure::StructureChunker,
@@ -66,15 +68,15 @@ async fn main() -> anyhow::Result<()> {
             pipeline::ingest(&source, &chunker, &embedder, &store, &lexical).await?;
         }
         Command::Query { query, top_k, mode } => {
-            let embedder = E5SmallEmbedder::new()?;
-            let store = LanceStore::connect(&config.db_path).await?;
-            let lexical = TantivyIndex::open_or_create(&config.lexical_path)?;
+            let embedder = Arc::new(E5SmallEmbedder::new()?);
+            let store = Arc::new(LanceStore::connect(&config.db_path).await?);
+            let lexical = Arc::new(TantivyIndex::open_or_create(&config.lexical_path)?);
 
-            let retriever: Box<dyn Retriever + '_> = match mode {
-                RetrievalMode::Dense => Box::new(DenseRetriever::new(&embedder, &store)),
-                RetrievalMode::Lexical => Box::new(LexicalRetriever::new(&lexical)),
+            let retriever: Box<dyn Retriever> = match mode {
+                RetrievalMode::Dense => Box::new(DenseRetriever::new(embedder, store)),
+                RetrievalMode::Lexical => Box::new(LexicalRetriever::new(lexical)),
                 RetrievalMode::Hybrid => {
-                    Box::new(HybridRetriever::new(&embedder, &store, &lexical))
+                    Box::new(HybridRetriever::new(embedder, store, lexical))
                 }
             };
 

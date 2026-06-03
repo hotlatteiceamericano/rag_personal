@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::embed::Embedder;
 use crate::lexical::LexicalIndex;
@@ -9,15 +10,15 @@ use super::{DenseRetriever, LexicalRetriever, Retriever};
 const DEFAULT_N_PER_LEG: usize = 50;
 const DEFAULT_RRF_K: f32 = 60.0;
 
-pub struct HybridRetriever<'a, E: Embedder, S: VectorStore, L: LexicalIndex> {
-    dense: DenseRetriever<'a, E, S>,
-    lexical: LexicalRetriever<'a, L>,
+pub struct HybridRetriever<E: Embedder, S: VectorStore, L: LexicalIndex> {
+    dense: DenseRetriever<E, S>,
+    lexical: LexicalRetriever<L>,
     n_per_leg: usize,
     rrf_k: f32,
 }
 
-impl<'a, E: Embedder, S: VectorStore, L: LexicalIndex> HybridRetriever<'a, E, S, L> {
-    pub fn new(embedder: &'a E, store: &'a S, lexical: &'a L) -> Self {
+impl<E: Embedder, S: VectorStore, L: LexicalIndex> HybridRetriever<E, S, L> {
+    pub fn new(embedder: Arc<E>, store: Arc<S>, lexical: Arc<L>) -> Self {
         Self {
             dense: DenseRetriever::new(embedder, store),
             lexical: LexicalRetriever::new(lexical),
@@ -28,8 +29,8 @@ impl<'a, E: Embedder, S: VectorStore, L: LexicalIndex> HybridRetriever<'a, E, S,
 }
 
 #[async_trait::async_trait]
-impl<E: Embedder + Sync, S: VectorStore, L: LexicalIndex> Retriever
-    for HybridRetriever<'_, E, S, L>
+impl<E: Embedder + Send + Sync, S: VectorStore + Send + Sync, L: LexicalIndex + Send + Sync>
+    Retriever for HybridRetriever<E, S, L>
 {
     async fn retrieve(&self, query: &str, top_k: usize) -> anyhow::Result<Vec<Hit>> {
         let dense_hits = self.dense.retrieve(query, self.n_per_leg).await?;
