@@ -6,11 +6,13 @@ use rag_personal::{
     config::Config,
     embed::fastembed_embedder::E5SmallEmbedder,
     lexical::tantivy_index::TantivyIndex,
+    mcp::RagServer,
     pipeline,
     retrieve::{DenseRetriever, HybridRetriever, LexicalRetriever, RetrievalMode, Retriever},
     source::notion_source::NotionSource,
     store::lance_store::LanceStore,
 };
+use rmcp::{ServiceExt, transport::stdio};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -40,6 +42,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    ServeMcp,
 }
 
 #[tokio::main]
@@ -48,6 +51,8 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
         .init();
 
     let cli = Cli::parse();
@@ -144,6 +149,18 @@ async fn main() -> anyhow::Result<()> {
                 }
                 println!("Showing {} row(s).", rows.len());
             }
+        }
+        Command::ServeMcp => {
+            let embedder = Arc::new(E5SmallEmbedder::new()?);
+            let store = Arc::new(LanceStore::connect(&config.db_path).await?);
+            let lexical = Arc::new(TantivyIndex::open_or_create(&config.lexical_path)?);
+
+            let retriever: Arc<dyn Retriever> =
+                Arc::new(HybridRetriever::new(embedder, store, lexical));
+
+            tracing::info!("rag_personal MCP server starting on stdio");
+            let service = RagServer::new(retriever).serve(stdio()).await?;
+            service.waiting().await?;
         }
     }
 
