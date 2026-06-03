@@ -107,26 +107,26 @@ as P2 upgrade.
 ## Day 4 — Hybrid retrieval + end-to-end `ingest`/`query`
 
 **Deliverable**
-- [ ] `lexical/tantivy.rs`: `LexicalIndex` (BM25) over chunk `text`, built during
+- [x] `lexical/tantivy.rs`: `LexicalIndex` (BM25) over chunk `text`, built during
   ingest, using a **CJK-aware tokenizer** (`tantivy-jieba`) so Chinese
   segments into terms.
-- [ ] `retrieve.rs`: `HybridRetriever` = dense (`query:` prefix → vector search)
+- [x] `retrieve.rs`: `HybridRetriever` = dense (`query:` prefix → vector search)
   **+** lexical (BM25) **+ RRF fusion** (`k ≈ 60`) →
   `Hit { text, title, url, score }`. Expose a
   `RetrievalMode { Dense, Lexical, Hybrid }` selector and a stable `chunk_id`
   tiebreak so the eval can ablate the three legs reproducibly (design §8.1).
 - [x] `pipeline.rs`: wire full `ingest` (Notion → chunk → embed → **vector store +
   lexical index**).
-- [ ] `query "<text>"` subcommand prints fused ranked hits with scores +
+- [x] `query "<text>"` subcommand prints fused ranked hits with scores +
   citations.
 
 **Acceptance criteria**
-- [ ] Full `cargo run -- ingest` populates **both** the vector store and the
+- [x] Full `cargo run -- ingest` populates **both** the vector store and the
   lexical index; re-running does **not** duplicate rows (idempotent).
-- [ ] `cargo run -- query "<English question>"` **and** `query "<中文问题>"` each
+- [x] `cargo run -- query "<English question>"` **and** `query "<中文問題>"` each
   return the expected note in the top results (proves both legs work across
   languages).
-- [ ] A keyword-only query (exact proper noun / code identifier) ranks the right
+- [x] A keyword-only query (exact proper noun / code identifier) ranks the right
   chunk via the lexical leg even where dense alone would miss it.
 
 **Risk/note:** the heaviest day — hybrid adds the lexical index + CJK

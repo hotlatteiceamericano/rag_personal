@@ -68,8 +68,7 @@ impl LexicalIndex for TantivyIndex {
         let mut seen_pages: BTreeSet<&str> = BTreeSet::new();
         for c in chunks {
             if seen_pages.insert(c.page_id.as_str()) {
-                writer
-                    .delete_term(Term::from_field_text(self.fields.page_id, &c.page_id));
+                writer.delete_term(Term::from_field_text(self.fields.page_id, &c.page_id));
             }
         }
 
@@ -173,7 +172,11 @@ mod tests {
     fn bm25_finds_english_match() {
         let idx = in_ram_index();
         idx.upsert(&[
-            chunk("a#0", "a", "RAG pipelines combine retrieval with generation."),
+            chunk(
+                "a#0",
+                "a",
+                "RAG pipelines combine retrieval with generation.",
+            ),
             chunk("b#0", "b", "The cat sat on the mat."),
         ])
         .unwrap();
@@ -187,22 +190,31 @@ mod tests {
     fn bm25_finds_chinese_match_via_jieba() {
         let idx = in_ram_index();
         idx.upsert(&[
-            chunk("zh#0", "zh", "检索增强生成是一种将外部知识注入大模型的方法。"),
-            chunk("en#0", "en", "Reciprocal rank fusion blends two ranked lists."),
+            chunk("zh#0", "zh", "將外部知識注入大型語言模型"),
+            chunk(
+                "en#0",
+                "en",
+                "Reciprocal rank fusion blends two ranked lists.",
+            ),
         ])
         .unwrap();
 
-        let hits = idx.search("检索增强", 5).unwrap();
-        assert!(!hits.is_empty(), "expected Chinese tokenizer to segment 检索增强");
+        let hits = idx.search("外部知識", 5).unwrap();
+        assert!(
+            !hits.is_empty(),
+            "expected Chinese tokenizer to segment 外部知識"
+        );
         assert_eq!(hits[0].chunk_id, "zh#0");
     }
 
     #[test]
     fn delete_by_page_replaces_old_chunks() {
         let idx = in_ram_index();
-        idx.upsert(&[chunk("p#0", "p", "alpha bravo charlie")]).unwrap();
+        idx.upsert(&[chunk("p#0", "p", "alpha bravo charlie")])
+            .unwrap();
         // re-ingest the same page with different text — old row must be evicted
-        idx.upsert(&[chunk("p#0", "p", "delta echo foxtrot")]).unwrap();
+        idx.upsert(&[chunk("p#0", "p", "delta echo foxtrot")])
+            .unwrap();
 
         let stale = idx.search("alpha", 5).unwrap();
         assert!(stale.is_empty(), "old text should be deleted by page_id");

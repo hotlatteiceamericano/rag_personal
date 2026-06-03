@@ -38,13 +38,16 @@ impl<E: Embedder + Sync, S: VectorStore, L: LexicalIndex> Retriever
     }
 }
 
+/// combining the result from both lexical and dense
+/// higher the rank higher the priority
+/// specifically: 1 / (RRF_K + rank) points from each list
 fn rrf_fuse(lists: Vec<Vec<Hit>>, rrf_k: f32, top_k: usize) -> Vec<Hit> {
     let mut scores: HashMap<String, f32> = HashMap::new();
     let mut keep: HashMap<String, Hit> = HashMap::new();
 
     for list in lists {
-        for (rank0, hit) in list.into_iter().enumerate() {
-            let rank = (rank0 + 1) as f32;
+        for (index, hit) in list.into_iter().enumerate() {
+            let rank = (index + 1) as f32;
             *scores.entry(hit.chunk_id.clone()).or_insert(0.0) += 1.0 / (rrf_k + rank);
             keep.entry(hit.chunk_id.clone()).or_insert(hit);
         }
