@@ -34,6 +34,7 @@ struct HitJson {
 #[derive(Clone)]
 pub struct RagServer {
     retriever: Arc<dyn Retriever>,
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -82,14 +83,12 @@ impl RagServer {
 #[tool_handler]
 impl ServerHandler for RagServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::from_build_env())
+            .with_protocol_version(ProtocolVersion::V_2024_11_05)
+            .with_instructions(
                 "Search and retrieve relevant passages from the user's personal Notion notes."
                     .to_string(),
-            ),
-            ..Default::default()
-        }
+            )
     }
 }
