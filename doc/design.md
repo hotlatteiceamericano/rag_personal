@@ -502,6 +502,27 @@ points (the modules a phase changes).
 - [ ] **Incremental sync** — use Notion `last_edited_time`, delete+reinsert only changed pages — *Source, pipeline*
 - [ ] **Token-exact chunking** + semantic/recursive splitter — *Chunker only*
 - [ ] **ANN index** (LanceDB IVF_PQ) when corpus is large — *store/lancedb.rs*
+- [ ] **Streaming ingest pipeline** — overlap Notion fetch with embedding via a
+  bounded `mpsc` channel so source I/O and ONNX compute run concurrently and
+  peak RAM stays bounded by channel capacity × doc size — *source/, pipeline.rs*
+
+  **Design sketch.** Change `Source::fetch` from
+  `async fn fetch(&self) -> Result<Vec<SourceDoc>>` to
+  `async fn fetch(&self, tx: mpsc::Sender<Result<SourceDoc>>) -> Result<()>`,
+  so pages are pushed into the channel as the crawl discovers them rather
+  than collected first. `pipeline::ingest` then spawns the source as a
+  producer task and runs a consumer loop that drains the channel, chunks
+  each doc, buffers chunks until a small embed batch (~32) is ready, and
+  flushes `lexical.upsert` + `embedder.embed_passages` + `store.upsert`
+  per batch. Bounded channel capacity (~8 docs) gives natural backpressure:
+  when the embedder is busy, `tx.send().await` blocks and the Notion crawl
+  pauses on its own. Source needs to be `Arc<dyn Source>` so it can move
+  into a spawned task with `'static` lifetime.
+
+  **Why deferred.** This is a trait-surface change with cross-module impact
+  (Source, pipeline, main.rs wiring). The simpler bounded-batch embedding
+  loop ships the same OOM protection without changing any trait, so we land
+  that first and keep this as the throughput upgrade.
 
 ### Phase 3
 - [ ] **Cross-encoder reranker** over the fused top-N (fastembed supports rerankers) — *retrieve.rs*

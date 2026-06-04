@@ -35,8 +35,13 @@ pub async fn ingest(
     lexical.upsert(&chunks)?;
     info!("indexed {} chunks into lexical store", chunks.len());
 
-    let texts: Vec<String> = chunks.iter().map(|c| c.text.clone()).collect();
-    let vectors = embedder.embed_passages(&texts)?;
+    const EMBED_BATCH: usize = 32;
+    let mut vectors: Vec<Vec<f32>> = Vec::with_capacity(chunks.len());
+    for batch in chunks.chunks(EMBED_BATCH) {
+        let texts: Vec<String> = batch.iter().map(|c| c.text.clone()).collect();
+        let batch_vecs = embedder.embed_passages(&texts)?;
+        vectors.extend(batch_vecs);
+    }
     info!(
         "embedded {} chunks ({}-dim)",
         vectors.len(),

@@ -140,3 +140,28 @@ cargo run -- inspect --stats --json
 ```
 
 `--json` works with both row scans and `--stats`.
+
+## Environment
+
+### Memory considerations during embedding
+
+The embedding step (`embedder.embed_passages`) is the most memory-intensive
+stage of the pipeline. On low-RAM machines (~8 GB) it can be OOM-killed if
+all chunks are sent in a single call.
+
+The cost is **not** the output vectors — 1,000 chunks × 384 dims × 4 bytes
+is only ~1.5 MB. The cost is the **ONNX Runtime activations during the
+forward pass** of the E5 transformer:
+
+- Hidden states per layer: `[batch, seq_len, 384]`
+- Attention scores per layer: `[batch, heads, seq_len, seq_len]` — quadratic
+  in sequence length, so the 512-token max dominates.
+
+For a batch of 256 at seq_len 512, peak activation memory can reach 1–2 GB
+on top of the ~120 MB model weights and OS baseline. On an 8 GB machine
+that is enough to trip the OOM killer.
+
+**Mitigation**: process embeddings in bounded batches (e.g. 32 chunks at a
+time) so peak activation memory stays well under the available RAM.
+Pathologically large chunks (tens of thousands of characters) also inflate
+tokenizer buffers and should be capped at the chunking stage.
