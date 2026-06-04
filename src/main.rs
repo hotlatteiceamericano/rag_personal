@@ -60,9 +60,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Ingest => {
-            let notion_token = config
-                .notion_token
-                .ok_or_else(|| anyhow::anyhow!("NOTION_TOKEN not set"))?;
+            let notion_token = resolve_notion_token()?;
             let client = reqwest::Client::new();
             let source = NotionSource::new(client, notion_token, config.root_page_ids);
             let chunker = StructureChunker::new(config.chunk_target_tokens);
@@ -165,4 +163,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_notion_token() -> anyhow::Result<String> {
+    if let Ok(t) = std::env::var("NOTION_TOKEN")
+        && !t.trim().is_empty()
+    {
+        return Ok(t);
+    }
+    let t = rpassword::prompt_password("NOTION_TOKEN (input hidden): ")?;
+    if t.trim().is_empty() {
+        anyhow::bail!("NOTION_TOKEN cannot be empty");
+    }
+    Ok(t)
 }

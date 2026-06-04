@@ -21,6 +21,7 @@ futures = "0.3"
 tantivy = "0.26"
 tantivy-jieba = "0.20"
 rmcp = { version = "1.7", features = ["server", "macros", "transport-io"] }
+rpassword = "7"
 
 [dev-dependencies]
 wiremock = "0.6"
