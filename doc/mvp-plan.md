@@ -140,15 +140,15 @@ MVP requirement, so it lands before the metric, not after).
 ## Day 5 — MCP server + OpenClaw integration
 
 **Deliverable**
-- [ ] `mcp/server.rs`: `rmcp` stdio server exposing `search_notes(query, top_k)`
+- [x] `mcp/server.rs`: `rmcp` stdio server exposing `search_notes(query, top_k)`
   → JSON list of hits (reuses `Retriever`, read-only).
-- [ ] `serve-mcp` subcommand runs it.
-- [ ] Register with OpenClaw and verify a real agent call.
+- [x] `serve-mcp` subcommand runs it.
+- [x] Register with OpenClaw and verify a real agent call.
 
 **Acceptance criteria**
-- [ ] `openclaw mcp set notion-rag '{"command":"<abs path>","args":["serve-mcp"],
+- [x] `openclaw mcp set notion-rag '{"command":"<abs path>","args":["serve-mcp"],
   "env":{...}}'` then `openclaw mcp list` shows the server.
-- [ ] Asking OpenClaw a question about your notes triggers `search_notes` and the
+- [x] Asking OpenClaw a question about your notes triggers `search_notes` and the
   answer reflects retrieved content.
 
 **Risk/note:** stdio server must keep stdout clean for the MCP protocol — send

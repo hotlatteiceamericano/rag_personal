@@ -1,6 +1,7 @@
 pub mod chunk;
 pub mod config;
 pub mod embed;
+pub mod eval;
 pub mod lexical;
 pub mod mcp;
 pub mod pipeline;
