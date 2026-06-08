@@ -3,15 +3,15 @@
 A single-binary Rust pipeline that ingests Notion notes, embeds them with a
 multilingual model, and stores the results in a local LanceDB for retrieval.
 
-## Internal concepts
+It exposes three task commands:
 
-`SourceDoc` is the internal unit of a documentation from a source. A Notion
-page, a Google Doc page are all converted to a `SourceDoc`.
-
-A `SourceDoc` then being chunked into different units for embedding.
-
-todo: I want a diagram showing what are the input and output between each
-component (from Notion source to internal struct, to chunker, to embedder etc)
+- **`ingest`** — crawl your Notion workspace and build the local index. Prompts
+  for your Notion integration token if `NOTION_TOKEN` isn't in your environment.
+- **`serve-mcp`** — expose retrieval as an MCP tool over stdio so an MCP-aware
+  agent (e.g. OpenClaw) can call it. The same retrieval is also reachable
+  ad-hoc via the `query` subcommand for shell debugging.
+- **`eval`** — measure retrieval quality (Recall@5 today, faithfulness later)
+  against a hand-authored gold set.
 
 ## Prerequisites
 
@@ -80,6 +80,85 @@ Use the standard `RUST_LOG` env var:
 RUST_LOG=debug cargo run -- ingest    # noisier
 RUST_LOG=warn cargo run -- ingest     # quieter
 ```
+
+## Query
+
+Ad-hoc retrieval from the shell. Same code path the MCP server uses, exposed
+as a CLI for debugging and exploration.
+
+```
+cargo run -- query "<your question>"
+cargo run -- query "<your question>" --top-k 10 --mode hybrid
+```
+
+Flags:
+
+- `--top-k <N>` (default `5`) — how many hits to return.
+- `--mode <dense|lexical|hybrid>` (default `hybrid`) — which retriever to use.
+  Useful for spot-checking whether a miss is a dense-only or lexical-only
+  problem.
+
+Each hit is printed with its score, page title, Notion URL, and a 240-char
+preview of the chunk text.
+
+## Serve MCP
+
+Run an MCP server over stdio. An MCP-aware agent (OpenClaw, Claude Desktop,
+etc.) launches this binary as a child process and calls the tool over
+stdin/stdout.
+
+```
+cargo run -- serve-mcp
+```
+
+The server exposes one tool:
+
+- **`search_notes(query: string, top_k: integer)`** — runs the same hybrid
+  retriever as the `query` command and returns a JSON list of
+  `{ text, title, url, score }` hits.
+
+Stdout is reserved for the MCP protocol; all logs go to stderr. Register the
+binary with your agent once it's built, e.g. for OpenClaw:
+
+```
+openclaw mcp set notion-rag '{"command":"/abs/path/to/rag_personal", \
+  "args":["serve-mcp"], "env":{"NOTION_TOKEN":"...", \
+  "RAG_DB_PATH":"/abs/path/data/lancedb"}}'
+openclaw mcp list      # verify it shows up
+```
+
+## Eval
+
+Measure retrieval quality against a hand-authored gold set at
+`eval/gold.jsonl`. One JSON object per line, schema:
+
+```
+{"q": "what is the goal for X?",
+ "relevant_page_ids": ["<notion_page_id>"],
+ "answer_span": "exact phrase from the answering sentence"}
+```
+
+`answer_span` is optional — when present, a hit requires the retrieved chunk
+to contain that phrase (chunk-level relevance). When absent, page-level
+relevance is used instead and the entry is marked as using the looser rule.
+
+### Recall@5
+
+```
+cargo run -- eval recall
+cargo run -- eval recall --gold path/to/gold.jsonl --top-k 5
+```
+
+Runs every gold question through the **dense**, **lexical**, and **hybrid**
+retrievers and prints a 3-row Markdown table with:
+
+- **Hits / Total / Recall@5** — the headline metric per mode.
+- **PageMiss** — the relevant page wasn't in the top-K at all.
+- **SpanMiss** — the page was in the top-K but no chunk contained the
+  `answer_span` (only fires when `answer_span` is set).
+
+The dense/lexical/hybrid split makes it visible when fusion *regresses* vs.
+either leg alone, which is the main risk RRF can introduce.
 
 ## Inspect
 
