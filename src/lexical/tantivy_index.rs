@@ -92,7 +92,10 @@ impl LexicalIndex for TantivyIndex {
     fn search(&self, query: &str, k: usize) -> anyhow::Result<Vec<Hit>> {
         let searcher = self.reader.searcher();
         let qp = QueryParser::for_index(&self.index, vec![self.fields.text]);
-        let q = qp.parse_query(query).context("parsing query")?;
+        let (q, errors) = qp.parse_query_lenient(query);
+        if !errors.is_empty() {
+            tracing::debug!(?errors, query, "tantivy lenient parse: ignored tokens");
+        }
         let top = searcher
             .search(&q, &TopDocs::with_limit(k).order_by_score())
             .context("tantivy search")?;
