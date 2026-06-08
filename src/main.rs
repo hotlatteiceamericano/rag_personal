@@ -1,10 +1,11 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use clap::{Parser, Subcommand};
 use rag_personal::{
     chunk::structure::StructureChunker,
     config::Config,
     embed::fastembed_embedder::E5SmallEmbedder,
+    eval,
     lexical::tantivy_index::TantivyIndex,
     mcp::RagServer,
     pipeline,
@@ -43,6 +44,20 @@ enum Command {
         json: bool,
     },
     ServeMcp,
+    Eval {
+        #[command(subcommand)]
+        kind: EvalKind,
+    },
+}
+
+#[derive(Subcommand)]
+enum EvalKind {
+    Recall {
+        #[arg(long, default_value = "eval/gold.jsonl")]
+        gold: PathBuf,
+        #[arg(long, default_value_t = 5)]
+        top_k: usize,
+    },
 }
 
 #[tokio::main]
@@ -78,9 +93,7 @@ async fn main() -> anyhow::Result<()> {
             let retriever: Box<dyn Retriever> = match mode {
                 RetrievalMode::Dense => Box::new(DenseRetriever::new(embedder, store)),
                 RetrievalMode::Lexical => Box::new(LexicalRetriever::new(lexical)),
-                RetrievalMode::Hybrid => {
-                    Box::new(HybridRetriever::new(embedder, store, lexical))
-                }
+                RetrievalMode::Hybrid => Box::new(HybridRetriever::new(embedder, store, lexical)),
             };
 
             let hits = retriever.retrieve(&query, top_k).await?;
@@ -148,6 +161,40 @@ async fn main() -> anyhow::Result<()> {
                 println!("Showing {} row(s).", rows.len());
             }
         }
+        Command::Eval { kind } => match kind {
+            EvalKind::Recall { gold, top_k } => {
+                let gold_entries = eval::load_gold(&gold)?;
+                println!(
+                    "Loaded {} gold entries from {}",
+                    gold_entries.len(),
+                    gold.display(),
+                );
+
+                let embedder = Arc::new(E5SmallEmbedder::new()?);
+                let store = Arc::new(LanceStore::connect(&config.db_path).await?);
+                let lexical = Arc::new(TantivyIndex::open_or_create(&config.lexical_path)?);
+
+                let dense = DenseRetriever::new(embedder.clone(), store.clone());
+                let lex = LexicalRetriever::new(lexical.clone());
+                let hybrid = HybridRetriever::new(embedder, store, lexical);
+
+                tracing::info!("running dense…");
+                let r_dense =
+                    eval::recall::run_mode(&dense, RetrievalMode::Dense, &gold_entries, top_k)
+                        .await?;
+                tracing::info!("running lexical…");
+                let r_lex =
+                    eval::recall::run_mode(&lex, RetrievalMode::Lexical, &gold_entries, top_k)
+                        .await?;
+                tracing::info!("running hybrid…");
+                let r_hyb =
+                    eval::recall::run_mode(&hybrid, RetrievalMode::Hybrid, &gold_entries, top_k)
+                        .await?;
+
+                println!();
+                println!("{}", eval::recall::render_table(&[r_dense, r_lex, r_hyb]));
+            }
+        },
         Command::ServeMcp => {
             let embedder = Arc::new(E5SmallEmbedder::new()?);
             let store = Arc::new(LanceStore::connect(&config.db_path).await?);
